@@ -1,0 +1,1208 @@
+<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+<meta content="utf-8" http-equiv="encoding">
+
+<!-- 
+    Contact me:
+        Roy Kedmi
+        rskedmi@gmail.com
+
+    This is my version of an ocean FFT simulation! 
+    Big thanks to the internet for giving me knowledge.
+    I used the follwing resources to create this simulation:
+
+        http://david.li/waves/
+
+        http://www.keithlantz.net/2011/10/ocean-simulation-part-one-using-the-discrete-fourier-transform/
+        http://www.keithlantz.net/2011/11/ocean-simulation-part-two-using-the-fast-fourier-transform/
+
+        [OpenGL Engine Tutorial] FFT Ocean Water:
+            https://www.youtube.com/watch?v=B3YOLg0sA2g
+            https://www.youtube.com/watch?v=i0BPrGuOdPo
+            https://www.youtube.com/watch?v=8kgpxtggFog
+
+        http://www.gamasutra.com/blogs/ConorDickinson/20130919/200656/Stunning_Procedural_Skies_in_WebGL__Part_1.php
+        http://www.gamasutra.com/blogs/ConorDickinson/20130925/200990/Stunning_Procedural_Skies_in_WebGL__Part_2.php
+        http://codeflow.org/entries/2011/apr/13/advanced-webgl-part-2-sky-rendering/
+        http://www.wuhao.co/webgl-fft-ocean.html
+        https://github.com/wuhao1117/WebGL-Ocean-FFT
+        http://www.wuhao.co/uploads/2/6/0/1/26012804/paper_final.pdf
+
+-->
+
+<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+
+<!-- Shaders -->
+<script id="fullscreenVertexShader" type="shader">
+    attribute vec2 aPosition;
+    varying vec2 vCoordinates;
+
+    void main() {
+        //The fullscreen shader vertices position is between -1 to 1
+        //We are ranging it from 0 to 1
+        vCoordinates = aPosition * 0.5 + 0.5; //getting the current coordinate of the texture
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+    }
+</script>
+
+<script id="displayTextureShader" type="shader">
+    precision mediump float;
+
+    uniform sampler2D uInputTextureIndex;
+    varying vec2 vCoordinates;
+
+    void main(void) {
+        vec4 texColor = texture2D(uInputTextureIndex, vCoordinates);
+        gl_FragColor = vec4(texColor.x, texColor.y, texColor.z, texColor.a);
+    }
+</script>
+
+<script id="inverseFFTShader" type="shader">
+    precision mediump float;
+
+    uniform sampler2D uInputTextureIndex;
+    uniform float uSize;
+    varying vec2 vCoordinates;
+
+    void main(void) {
+        vec4 texColor = texture2D(uInputTextureIndex, vCoordinates);
+        float h = texColor.x / (uSize*uSize);
+        gl_FragColor = vec4(texColor.x, texColor.y, texColor.z, texColor.a);
+        gl_FragColor = vec4(h, h, h, 1.0);
+    }
+</script>
+
+<script id="h0Shader" type="shader">
+    precision mediump float;
+
+    #define M_PI 3.1415926535897932384626433832795
+
+    uniform sampler2D uNoise0TextureIndex;
+    uniform sampler2D uNoise1TextureIndex;
+    uniform sampler2D uNoise2TextureIndex;
+    uniform sampler2D uNoise3TextureIndex;
+
+    uniform float uL;
+    uniform float uA;
+    uniform float uWindSpeed;
+    uniform float uWindDirectionX;
+    uniform float uWindDirectionY;
+
+    const float g = 9.81;
+
+    varying vec2 vCoordinates;
+
+    vec4 gaussRandom() {
+        float noise00 = clamp(texture2D(uNoise0TextureIndex, vCoordinates).r + 0.00001, 0.0, 1.0);
+        float noise01 = clamp(texture2D(uNoise1TextureIndex, vCoordinates).r + 0.00001, 0.0, 1.0);
+        float noise02 = clamp(texture2D(uNoise2TextureIndex, vCoordinates).r + 0.00001, 0.0, 1.0);
+        float noise03 = clamp(texture2D(uNoise3TextureIndex, vCoordinates).r + 0.00001, 0.0, 1.0);
+
+        float u0 = 2.0 * M_PI * noise00;
+        float v0 = sqrt(-2.0 * log(noise01));
+        float u1 = 2.0 * M_PI * noise02;
+        float v1 = sqrt(-2.0 * log(noise03));
+
+        return vec4(v0 * cos(u0), v0 * sin(u0), v1 * cos(u1), v1 * sin(u1));
+    }
+
+    void main(void) {
+        vec2 x = vCoordinates*512.0;
+        vec2 k = vec2(2.0 * M_PI * x.x / uL, 2.0 * M_PI * x.y/uL);
+
+        vec2 uW = vec2(uWindDirectionX, uWindDirectionY);
+
+        float L_ = (uWindSpeed * uWindSpeed)/g;
+        float mag = length(k);
+        if (mag < 0.0001) { 
+            mag = 0.0001;
+        }
+
+        float magSq = mag * mag;
+
+//if i'ts minus k
+#ifndef H0_K 
+        k = -k;
+#endif
+        float h0k = clamp(sqrt((uA/(magSq*magSq)) * pow(dot(normalize(k), normalize(uW)), 4.0) * exp(-(1.0/(magSq * L_ * L_))) * exp(-magSq*pow(uL/2000.0, 2.0)))/ sqrt(2.0), 0.0, 1000000.0);
+
+        vec4 randomGauss = gaussRandom();
+
+#ifdef H0_K
+        gl_FragColor = vec4(randomGauss.xy * h0k, 0.0, 1.0);
+#else
+        gl_FragColor = vec4(randomGauss.zw * h0k, 0.0, 1.0);
+#endif
+    }
+</script>
+
+
+<script id="htShader" type="shader">
+    precision mediump float;
+
+    #define M_PI 3.1415926535897932384626433832795
+
+    uniform float uL;
+    uniform float uT;
+    uniform sampler2D uH0k;
+    uniform sampler2D uH0kminus;
+
+    varying vec2 vCoordinates;
+
+    const float g = 9.81;
+
+    struct complex
+    {    
+        float real;
+        float im;
+    };
+
+    complex mul(complex c0, complex c1)
+    {
+        complex c;
+        c.real = c0.real * c1.real - c0.im * c1.im;
+        c.im   = c0.real * c1.im + c0.im * c1.real;
+        return c;
+    }
+
+    complex add(complex c0, complex c1)
+    {
+        complex c;
+        c.real = c0.real + c1.real;
+        c.im   = c0.im   + c1.im;
+        return c;
+    }
+
+    complex conj(complex c)
+    {
+        complex c_conj = complex(c.real, -c.im);
+        
+        return c_conj;
+    }
+
+
+    void main(void) {
+        vec2 x = vCoordinates*512.0;
+        vec2 k = vec2(2.0 * M_PI * x.x / uL, 2.0 * M_PI * x.y/uL);
+
+        float magnitude = length(k);
+        if (magnitude < 0.0001) {
+            magnitude = 0.0001;
+        }
+
+        float w = sqrt(g * magnitude);
+
+        vec4 h0k = texture2D(uH0k, vCoordinates);
+        vec4 h0kminus = texture2D(uH0kminus, vCoordinates);
+
+        complex cH0k = complex(h0k.r, h0k.g);
+        complex cH0minusk = conj(complex(h0kminus.r, h0kminus.g));
+
+        float cosinus = cos(w*uT);
+        float sinus   = sin(w*uT);
+
+        complex exp_iwt = complex(cosinus, sinus);
+        complex exp_iwt_inv = complex(cosinus, -sinus);
+
+        complex h_k_t_dy = add(mul(cH0k, exp_iwt), (mul(cH0minusk, exp_iwt_inv)));
+
+        // dx
+        complex dx = complex(0.0,-k.x/magnitude);
+        complex h_k_t_dx = mul(dx, h_k_t_dy);
+        
+        // dz
+        complex dy = complex(0.0,-k.y/magnitude);
+        complex h_k_t_dz = mul(dy, h_k_t_dy);
+
+        gl_FragColor = vec4(h_k_t_dy.real, h_k_t_dy.im, 0.0, 1.0);
+        //gl_FragColor = vec4(0.2, 0.0, 0.0, 1.0);
+    }
+</script>
+
+<script id="FFTShader" type="shader">
+    precision highp float;
+
+    #define M_PI 3.1415926535897932384626433832795
+
+    uniform sampler2D uInputTextureIndex;
+
+    uniform float uTransformSize;
+    uniform float uSubtransformSize;
+
+    varying vec2 vCoordinates;
+
+    vec2 multiplyComplex (vec2 a, vec2 b) {
+        return vec2(a[0] * b[0] - a[1] * b[1], a[1] * b[0] + a[0] * b[1]);
+    }
+
+    void main (void) {
+
+        gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+#ifdef HORIZONTAL
+        float index = vCoordinates.x * uTransformSize - 0.5;
+#else
+        float index = vCoordinates.y * uTransformSize - 0.5;
+#endif
+
+        float evenIndex = floor(index / uSubtransformSize) * (uSubtransformSize * 0.5) + mod(index, uSubtransformSize * 0.5);
+        
+
+#ifdef HORIZONTAL
+        //transform two complex sequences simultaneously
+        vec4 even = texture2D(uInputTextureIndex, vec2(evenIndex + 0.5, gl_FragCoord.y) / uTransformSize).rgba;
+        vec4 odd = texture2D(uInputTextureIndex, vec2(evenIndex + uTransformSize * 0.5 + 0.5, gl_FragCoord.y) / uTransformSize).rgba;
+#else
+        vec4 even = texture2D(uInputTextureIndex, vec2(gl_FragCoord.x, evenIndex + 0.5) / uTransformSize).rgba;
+        vec4 odd = texture2D(uInputTextureIndex, vec2(gl_FragCoord.x, evenIndex + uTransformSize * 0.5 + 0.5) / uTransformSize).rgba;
+#endif
+
+        float twiddleArgument = -2.0 * M_PI * (index / uSubtransformSize);
+        vec2 twiddle = vec2(cos(twiddleArgument), sin(twiddleArgument));
+
+        vec2 outputA = even.xy + multiplyComplex(twiddle, odd.xy);
+        vec2 outputB = even.zw + multiplyComplex(twiddle, odd.zw);
+
+        gl_FragColor = vec4(outputA, outputB);
+        //gl_FragColor = vec4(even);
+    }
+</script>
+
+<script id="oceanVertexShader" type="shader">
+    attribute vec3 aVertexPosition;
+    attribute vec2 aTextureCoord;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    uniform sampler2D uWaveHeightTexture;
+
+    void main(void) {
+        vec2 waveHeight = texture2D(uWaveHeightTexture, vec2(aTextureCoord.x, aTextureCoord.y)).xy;
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition.x, waveHeight.x, aVertexPosition.z, 1.0);
+    }
+</script>
+
+<script id="oceanFragmentShader" type="shader">
+    precision highp float;
+
+    void main(void) {
+        gl_FragColor = vec4(0.0, 0.2, 1.0, 1.0);
+    }
+</script>
+
+<script id="skyShader" type="shader">
+    precision highp float;
+
+    uniform vec4 uSkyParam1;
+    uniform vec4 uSkyParam2;
+    uniform vec4 uSkyParam3;
+    uniform vec4 uSkyParam4;
+    uniform vec4 uSkyParam5;
+    uniform vec4 uSkyParam6;
+
+    uniform vec3 uEyePosition;
+    uniform vec3 uSunPosition;
+    uniform vec3 uEyeCenter;
+    uniform vec3 uEyeUp;
+    uniform float uFOV;
+
+    varying vec2 vCoordinates;
+
+    vec3 get_Pixel_Dir() {
+        vec3 view = normalize(uEyeCenter-uEyePosition);
+        vec3 A = cross(view,uEyeUp);
+        vec3 B = cross(A,view);
+        vec3 M = uEyePosition+view;
+        vec3 V = B * (length(view)*tan(uFOV)/length(B));
+        vec3 H =- A * (length(view)*tan(uFOV)/length(A));
+
+        float t1 = vCoordinates.x;
+        float t2 = vCoordinates.y;
+        vec3 P=M-t1*H+t2*V;
+        vec3 R=normalize(P-uEyePosition);
+
+        return R;
+    }
+
+    vec3 calcExtinction(float dist) {
+        return exp(dist * uSkyParam6.xyz);
+    }
+
+    vec3 calcScattering(float cos_theta) {
+        float r_phase = (cos_theta * cos_theta) * uSkyParam6.w + uSkyParam6.w;
+        float m_phase = uSkyParam1.w * pow(uSkyParam2.w * cos_theta + uSkyParam3.w, -1.5);
+        return uSkyParam2.xyz * r_phase + (uSkyParam3.xyz * m_phase);
+    }
+
+    float baseOpticalDepth(in vec3 ray) {
+        float a1 = uSkyParam4.x * ray.y;
+
+        return sqrt(a1 * a1 + uSkyParam4.w) - a1;
+    }
+
+    float opticalDepth(in vec3 pos, in vec3 ray) {
+        pos.y += uSkyParam4.x;
+        float a0 = uSkyParam4.y - dot(pos, pos);
+        float a1 = dot(pos, ray);
+
+        return sqrt(a1 * a1 + a0) - a1;
+    }
+
+    vec3 getColor(vec3 view_vec)
+    {
+        vec3 sun_vector = normalize(uSunPosition);
+        float cos_theta = dot(view_vec, sun_vector);
+        float ray_dist = baseOpticalDepth(view_vec);
+        vec3 extinction = calcExtinction(ray_dist);
+        vec3 light_ray_pos = view_vec * (ray_dist * uSkyParam4.z);
+        float light_ray_dist = opticalDepth(light_ray_pos, sun_vector);
+        float light_ray_dist_full = opticalDepth(view_vec * ray_dist, sun_vector);
+        light_ray_dist = max(light_ray_dist, light_ray_dist_full);
+        vec3 incoming_light = calcExtinction(light_ray_dist);
+        vec3 scattering = calcScattering(cos_theta);
+        scattering *= 1.0 - extinction;
+        vec3 in_scatter = incoming_light * scattering;
+        float sun_strength = clamp(cos_theta * uSkyParam1.x + uSkyParam1.y, 0.0, 1.0);
+        sun_strength *= sun_strength;
+        vec3 sun_disk = extinction * sun_strength;
+
+        return uSkyParam5.xyz * (uSkyParam5.w * sun_disk + in_scatter);
+    }
+    void main()
+    {
+        vec3 view_vec = get_Pixel_Dir();
+        vec3 outcolor = getColor(view_vec);
+
+        //gl_FragColor = vec4(outcolor,1.0);
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+</script>
+
+<script type="text/javascript">
+//Holds the webgl context
+var gl;
+
+//The main canvas we are drawing on
+var gCanvas;
+
+//The last time the tick function ran, to determine the delta time
+var gLastDeltaTime;
+
+//The sum of delta time that has passed
+var gTimePassed = 0;
+
+//The camera for the drawing (Our viewpoint)
+var gCamera = {
+    cameraX: 0.0,
+    cameraY: 0.0,
+    cameraZ: 0.0,
+    FOV: 45.0,
+};
+
+//All the webgl programs
+var gPrograms = {
+    h0k: null,
+    h0kminus: null,
+    htk: null,
+    FFTHorizontal: null,
+    FFTVertical: null,
+    sky: null,
+    ocean: null,
+};
+
+//All the webgl textures
+var gTexturesIndexes = {
+    h0k: 0,
+    h0kminus: 1,
+    htk: 2,
+    ping: 3,
+    pong: 4,
+    FFTOutput: 5,
+    noise0: 6,
+    noise1: 7,
+    noise2: 8,
+    noise3: 9,
+    displacementMap: 10,
+};
+
+//All the webgl textures
+var gTextures = {
+    h0k: null,
+    h0kminus: null,
+    htk: null,
+    ping: null,
+    pong: null,
+    FFTOutput: null,
+    noise0: null,
+    noise1: null,
+    noise2: null,
+    noise3: null,
+    displacementMap: null,
+};
+
+//All the webgl framebuffers
+var gFrameBuffers = {
+    h0k: null,
+    h0kminus: null,
+    htk: null,
+    ping: null,
+    pong: null,
+    FFTOutput: null,
+    displacementMap: null,
+};
+
+//The fullscreen quad vertex buffer
+var gTextureVertexBuffer;
+
+//The width and the height of the textures
+var gTexturesSize = 512.0;
+
+//The size of the patch in meters
+var gPatchSize = 100.0;
+
+var gOceanBuffers = {
+    oceanVertices : null,
+    oceanTextureCoordinates : null,
+    oceanIndices : null,
+};
+
+var gNumberOfTexturesToLoad = 4;
+
+var gSpectrumParameters = {
+    L : 3000.0,
+    A : 20.0,
+    windSpeed : 26.0,
+    windDirectionX : 1,
+    windDirectionY : 1,
+};
+
+var gSkyParameters = {
+    param1 : new Vec4(),
+    param2 : new Vec4(),
+    param3 : new Vec4(),
+    param4 : new Vec4(),
+    param5 : new Vec4(),
+    param6 : new Vec4(),
+};
+
+var gSkyProperties = {
+    atmosphereScale : 1.0,
+    brightness : 10.0,
+    clarity : 0.2,
+    density : 0.99,
+    planetScale : 1.0,
+    pollution : 0.03,
+    sunDiskRadius : 0.1,
+    sunDiskIntensity : 0.5,
+    sunPosition : [0.0, 0.0, 0.0],
+    center : [0.0, 0.0, 0.0],
+    up : [0.0, 1.0, 0.0],
+    faceDirection : [0.0, -1.0, 1.0],
+    eye : [0.0, 1.5, 0.0],
+    sunAzimuth : (Math.PI / 4.0),
+    sunZenith : (Math.PI / 2.0 - Math.PI/10.0),
+};
+
+var gMatrices = {
+    modelView : null,
+    perspective : null,
+};
+
+function initalizeWebGL() {
+    try {
+        gl = gCanvas.getContext("experimental-webgl");
+
+        gl.getExtension("OES_texture_float");
+        gl.getExtension("OES_texture_float_linear");
+        gl.getExtension("OES_element_index_uint");
+
+    } catch(e) { }
+
+    if (!gl) {
+        alert("Could not initalize WebGL");
+    }
+}
+
+function initalizeCanvas() {
+    var fewPixelsFromEnd = 20;
+
+    gCanvas.width = window.innerWidth - fewPixelsFromEnd;
+    gCanvas.height = window.innerHeight - fewPixelsFromEnd;
+}
+
+function initalizeKeyHandlers() {
+    document.onkeydown = handleKeyDown;
+    document.onkeyup = handleKeyUp;
+}
+
+function handleKeyDown(event) {
+    var keyCode = event.keyCode;
+    var upKeyCode = 38;
+    var leftKeyCode = 37;
+    var rightKeyCode = 39;
+    var downKeyCode = 40;
+    var enterKeyCode = 13;
+    var qKeyCode = 81;
+    var eKeyCode = 69;
+
+    if (keyCode == upKeyCode) {
+        gCamera.cameraY-=1.0;
+    } 
+    if (keyCode == downKeyCode) {
+        gCamera.cameraY += 1.0;
+    } 
+    if (keyCode == leftKeyCode) {
+        gCamera.cameraX += 1.0;
+    } 
+    if (keyCode == rightKeyCode) {
+        gCamera.cameraX -= 1.0;
+    } 
+    if (keyCode == qKeyCode) {
+        gCamera.cameraZ -= 1.0;
+    } 
+    if (keyCode == eKeyCode) {
+        gCamera.cameraZ += 1.0;
+    } 
+    if (keyCode == enterKeyCode) {
+        alert(gCamera.cameraZ);
+    }
+}
+
+function handleKeyUp(event) {
+}
+
+function initalizeCamera() {
+    gCamera.cameraX = 0.0;
+    gCamera.cameraY = -3.0;
+    gCamera.cameraZ = -32.0;
+}
+
+function tick() {
+    window.requestAnimationFrame(tick);
+
+    var currentTime = Date.now();
+    var deltaTime = (currentTime - gLastDeltaTime) / 1000.0;
+
+    gLastDeltaTime = currentTime;
+
+    drawScene(deltaTime);
+}
+
+function drawScene(deltaTime) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, gCanvas.width, gCanvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    //If the textures didn't load don't do anything
+    if (gNumberOfTexturesToLoad) { return };
+
+    gl.viewport(0, 0, gTexturesSize, gTexturesSize);
+
+    gl.useProgram(gPrograms.h0k);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.h0k);
+    gl.vertexAttribPointer(gPrograms.h0k.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    gl.useProgram(gPrograms.h0kminus);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.h0kminus);
+    gl.vertexAttribPointer(gPrograms.h0kminus.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    gl.useProgram(gPrograms.htk);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.htk);
+    gl.vertexAttribPointer(gPrograms.htk.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+
+    gTimePassed = gTimePassed + deltaTime + 0.1;
+    gl.uniform1f(gPrograms.htk.uT, gTimePassed); 
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    //GPU FFT using Stockham formulation
+    var iterations = Math.log2(gTexturesSize) * 2;
+    var currentFFTProgram = gPrograms.FFTVertical;
+    
+    gl.viewport(0, 0, gTexturesSize, gTexturesSize);
+    gl.useProgram(currentFFTProgram);
+
+    //calculating fft
+    for (var i = 0; i < iterations; i++) {
+        if (i === 0) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.ping);
+            gl.uniform1i(currentFFTProgram.uInputTextureIndex, gTexturesIndexes.htk);
+        } else if (i === iterations - 1) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.FFTOutput);
+            if (iterations % 2 === 0) {
+                gl.uniform1i(currentFFTProgram.uInputTextureIndex, gTexturesIndexes.ping);
+            } else {
+                gl.uniform1i(currentFFTProgram.uInputTextureIndex, gTexturesIndexes.pong);
+            }
+        } else if (i % 2 === 1) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.pong);
+            gl.uniform1i(currentFFTProgram.uInputTextureIndex, gTexturesIndexes.ping);
+        } else {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.ping);
+            gl.uniform1i(currentFFTProgram.uInputTextureIndex, gTexturesIndexes.pong);
+        }
+
+        if (i === iterations / 2) {
+            currentFFTProgram = gPrograms.FFTHorizontal;
+            gl.useProgram(currentFFTProgram);
+        }
+
+        gl.uniform1f(currentFFTProgram.uSubtransformSize, Math.pow(2,(i % (iterations / 2)) + 1));
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    gl.viewport(0, 0, gTexturesSize, gTexturesSize);
+    gl.useProgram(gPrograms.inverseFFT);
+    gl.uniform1i(gPrograms.inverseFFT.uInputTextureIndex, gTexturesIndexes.FFTOutput); 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gFrameBuffers.displacementMap);
+    gl.vertexAttribPointer(gPrograms.inverseFFT.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    ////Display any texture
+    //gl.viewport(0, 0, gCanvas.width, gCanvas.height);
+    //gl.useProgram(gPrograms.displayTexture);
+    //gl.uniform1i(gPrograms.displayTexture.uInputTextureIndex, gTexturesIndexes.displacementMap); 
+    //gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    //gl.vertexAttribPointer(gPrograms.displayTexture.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    //gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+    //gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.viewport(0, 0, gCanvas.width, gCanvas.height);
+    gl.useProgram(gPrograms.sky);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.vertexAttribPointer(gPrograms.sky.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    mat4.perspective(gCamera.FOV, gCanvas.width / gCanvas.height, 0.1, 10000000.0, gMatrices.perspective);
+    mat4.identity(gMatrices.modelView);
+    mat4.translate(gMatrices.modelView, [gCamera.cameraX, gCamera.cameraY, gCamera.cameraZ]);
+
+    gl.viewport(0, 0, gCanvas.width, gCanvas.height);
+    gl.useProgram(gPrograms.ocean);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    gl.uniformMatrix4fv(gPrograms.ocean.uPMatrix, false, gMatrices.perspective);
+    gl.uniformMatrix4fv(gPrograms.ocean.uMVMatrix, false, gMatrices.modelView);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, gOceanBuffers.oceanVertices);
+    gl.vertexAttribPointer(gPrograms.ocean.aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gPrograms.ocean.aVertexPosition);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, gOceanBuffers.oceanTextureCoordinates);
+    gl.vertexAttribPointer(gPrograms.ocean.textureCoordAttribute, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gPrograms.ocean.textureCoordAttribute);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gOceanBuffers.oceanIndices);
+    gl.drawElements(gl.LINES, gOceanBuffers.oceanIndices.numberOfItems, gl.UNSIGNED_INT, 0);
+
+    ////Drawing number of ocean patches
+    //var translationMatrix = mat4.create()
+    //for (var i = 0; i < 3; i++) {
+    //    for (var j = 0; j < 3; j++) {
+    //        mat4.translate(gMatrices.modelView, [-i*gPatchSize, 0.0, 0.0], translationMatrix);
+    //        mat4.translate(translationMatrix, [0.0, 0.0, -1*j*gPatchSize], translationMatrix);
+    //        gl.uniformMatrix4fv(gPrograms.ocean.uMVMatrix, false, translationMatrix);
+    //        gl.drawElements(gl.LINES, gOceanBuffers.oceanIndices.numberOfItems, gl.UNSIGNED_INT, 0);
+    //    }
+    //}
+
+    ////Display any texture
+    //gl.viewport(0, 0, gCanvas.width, gCanvas.height);
+    //gl.useProgram(gPrograms.displayTexture);
+    //gl.uniform1i(gPrograms.displayTexture.uInputTextureIndex, gTexturesIndexes.displacementMap); 
+    //gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    //gl.vertexAttribPointer(gPrograms.displayTexture.aVertexPosition, 2, gl.FLOAT, false, 0, 0);
+    //gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+    //gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+}
+
+function initalizePrograms() {
+    var vertexShader = getShader("fullscreenVertexShader", gl.VERTEX_SHADER, "");
+
+    var fragmentShader = getShader("h0Shader", gl.FRAGMENT_SHADER, "#define H0_K \n");
+    gPrograms.h0k = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.h0k);
+    gPrograms.h0k.aVertexPosition = gl.getAttribLocation(gPrograms.h0k, "aPosition");
+    gPrograms.h0k.uNoise0TextureIndex = gl.getUniformLocation(gPrograms.h0k, "uNoise0TextureIndex");
+    gPrograms.h0k.uNoise1TextureIndex = gl.getUniformLocation(gPrograms.h0k, "uNoise1TextureIndex");
+    gPrograms.h0k.uNoise2TextureIndex = gl.getUniformLocation(gPrograms.h0k, "uNoise2TextureIndex");
+    gPrograms.h0k.uNoise3TextureIndex = gl.getUniformLocation(gPrograms.h0k, "uNoise3TextureIndex");
+    gPrograms.h0k.uL = gl.getUniformLocation(gPrograms.h0k, "uL");                             
+    gPrograms.h0k.uA = gl.getUniformLocation(gPrograms.h0k, "uA");                             
+    gPrograms.h0k.uWindSpeed = gl.getUniformLocation(gPrograms.h0k, "uWindSpeed");                             
+    gPrograms.h0k.uWindDirectionX = gl.getUniformLocation(gPrograms.h0k, "uWindDirectionX");                             
+    gPrograms.h0k.uWindDirectionY = gl.getUniformLocation(gPrograms.h0k, "uWindDirectionY");                             
+
+    gl.uniform1i(gPrograms.h0k.uNoise0TextureIndex, gTexturesIndexes.noise0); 
+    gl.uniform1i(gPrograms.h0k.uNoise1TextureIndex, gTexturesIndexes.noise1); 
+    gl.uniform1i(gPrograms.h0k.uNoise2TextureIndex, gTexturesIndexes.noise2); 
+    gl.uniform1i(gPrograms.h0k.uNoise3TextureIndex, gTexturesIndexes.noise3); 
+    gl.uniform1f(gPrograms.h0k.uL, gSpectrumParameters.L); 
+    gl.uniform1f(gPrograms.h0k.uA, gSpectrumParameters.A); 
+    gl.uniform1f(gPrograms.h0k.uWindSpeed, gSpectrumParameters.windSpeed); 
+    gl.uniform1f(gPrograms.h0k.uWindDirectionX, gSpectrumParameters.windDirectionX); 
+    gl.uniform1f(gPrograms.h0k.uWindDirectionY, gSpectrumParameters.windDirectionY); 
+
+    gl.enableVertexAttribArray(gPrograms.h0k.aVertexPosition);
+
+
+    fragmentShader = getShader("h0Shader", gl.FRAGMENT_SHADER, "");
+    gPrograms.h0kminus = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.h0kminus);
+    gPrograms.h0kminus.aVertexPosition = gl.getAttribLocation(gPrograms.h0kminus, "aPosition");
+    gPrograms.h0kminus.uNoise0TextureIndex = gl.getUniformLocation(gPrograms.h0kminus, "uNoise0TextureIndex");
+    gPrograms.h0kminus.uNoise1TextureIndex = gl.getUniformLocation(gPrograms.h0kminus, "uNoise1TextureIndex");
+    gPrograms.h0kminus.uNoise2TextureIndex = gl.getUniformLocation(gPrograms.h0kminus, "uNoise2TextureIndex");
+    gPrograms.h0kminus.uNoise3TextureIndex = gl.getUniformLocation(gPrograms.h0kminus, "uNoise3TextureIndex");
+    gPrograms.h0kminus.uL = gl.getUniformLocation(gPrograms.h0kminus, "uL");                             
+    gPrograms.h0kminus.uA = gl.getUniformLocation(gPrograms.h0kminus, "uA");                             
+    gPrograms.h0kminus.uWindSpeed = gl.getUniformLocation(gPrograms.h0kminus, "uWindSpeed");                             
+    gPrograms.h0kminus.uWindDirectionX = gl.getUniformLocation(gPrograms.h0kminus, "uWindDirectionX");                             
+    gPrograms.h0kminus.uWindDirectionY = gl.getUniformLocation(gPrograms.h0kminus, "uWindDirectionY");                             
+
+    gl.uniform1i(gPrograms.h0kminus.uNoise0TextureIndex, gTexturesIndexes.noise0); 
+    gl.uniform1i(gPrograms.h0kminus.uNoise1TextureIndex, gTexturesIndexes.noise1); 
+    gl.uniform1i(gPrograms.h0kminus.uNoise2TextureIndex, gTexturesIndexes.noise2); 
+    gl.uniform1i(gPrograms.h0kminus.uNoise3TextureIndex, gTexturesIndexes.noise3); 
+    gl.uniform1f(gPrograms.h0kminus.uL, gSpectrumParameters.L); 
+    gl.uniform1f(gPrograms.h0kminus.uA, gSpectrumParameters.A); 
+    gl.uniform1f(gPrograms.h0kminus.uWindSpeed, gSpectrumParameters.windSpeed); 
+    gl.uniform1f(gPrograms.h0kminus.uWindDirectionX, gSpectrumParameters.windDirectionX); 
+    gl.uniform1f(gPrograms.h0kminus.uWindDirectionY, gSpectrumParameters.windDirectionY); 
+
+    gl.enableVertexAttribArray(gPrograms.h0kminus.aVertexPosition);
+
+    fragmentShader = getShader("htShader", gl.FRAGMENT_SHADER, "");
+    gPrograms.htk = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.htk);
+    gPrograms.htk.aVertexPosition = gl.getAttribLocation(gPrograms.htk, "aPosition");
+    gPrograms.htk.uH0k = gl.getUniformLocation(gPrograms.htk, "uH0k");                             
+    gPrograms.htk.uH0kminus = gl.getUniformLocation(gPrograms.htk, "uH0kminus");                             
+    gPrograms.htk.uT = gl.getUniformLocation(gPrograms.htk, "uT");                             
+    gPrograms.htk.uL = gl.getUniformLocation(gPrograms.htk, "uL");                             
+
+    gl.uniform1i(gPrograms.htk.uH0k, gTexturesIndexes.h0k); 
+    gl.uniform1i(gPrograms.htk.uH0kminus, gTexturesIndexes.h0kminus); 
+
+    gl.uniform1f(gPrograms.htk.uL, gSpectrumParameters.L); 
+    gl.enableVertexAttribArray(gPrograms.htk.aVertexPosition);
+
+    fragmentShader = getShader("displayTextureShader", gl.FRAGMENT_SHADER, "");
+    gPrograms.displayTexture = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.displayTexture);
+    gPrograms.displayTexture.aVertexPosition = gl.getAttribLocation(gPrograms.displayTexture, "aPosition");
+    gPrograms.displayTexture.uInputTextureIndex = gl.getUniformLocation(gPrograms.displayTexture, "uInputTextureIndex");                             
+    gl.enableVertexAttribArray(gPrograms.displayTexture.aVertexPosition);
+
+    fragmentShader = getShader("inverseFFTShader", gl.FRAGMENT_SHADER, "");
+    gPrograms.inverseFFT = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.inverseFFT);
+    gPrograms.inverseFFT.aVertexPosition = gl.getAttribLocation(gPrograms.inverseFFT, "aPosition");
+    gPrograms.inverseFFT.uInputTextureIndex = gl.getUniformLocation(gPrograms.inverseFFT, "uInputTextureIndex");                             
+    gPrograms.inverseFFT.uSize = gl.getUniformLocation(gPrograms.inverseFFT, "uSize");                             
+
+    gl.uniform1f(gPrograms.inverseFFT.uSize, gTexturesSize);
+
+    gl.enableVertexAttribArray(gPrograms.inverseFFT.aVertexPosition);
+
+    fragmentShader = getShader("FFTShader", gl.FRAGMENT_SHADER, "#define HORIZONTAL \n");
+    gPrograms.FFTHorizontal = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.FFTHorizontal);
+    gPrograms.FFTHorizontal.aVertexPosition = gl.getAttribLocation(gPrograms.FFTHorizontal, "aPosition");
+    gPrograms.FFTHorizontal.uInputTextureIndex = gl.getUniformLocation(gPrograms.FFTHorizontal, "uInputTextureIndex");                             
+    gPrograms.FFTHorizontal.uTransformSize = gl.getUniformLocation(gPrograms.FFTHorizontal, "uTransformSize");                             
+    gPrograms.FFTHorizontal.uSubtransformSize = gl.getUniformLocation(gPrograms.FFTHorizontal, "uSubtransformSize");                             
+    gl.uniform1f(gPrograms.FFTHorizontal.uTransformSize, gTexturesSize);
+
+    gl.enableVertexAttribArray(gPrograms.FFTHorizontal.aVertexPosition);
+
+    fragmentShader = getShader("FFTShader", gl.FRAGMENT_SHADER, "");
+    gPrograms.FFTVertical = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.FFTVertical);
+    gPrograms.FFTVertical.aVertexPosition = gl.getAttribLocation(gPrograms.FFTVertical, "aPosition");
+    gPrograms.FFTVertical.uInputTextureIndex = gl.getUniformLocation(gPrograms.FFTVertical, "uInputTextureIndex");                             
+    gPrograms.FFTVertical.uTransformSize = gl.getUniformLocation(gPrograms.FFTVertical, "uTransformSize");                             
+    gPrograms.FFTVertical.uSubtransformSize = gl.getUniformLocation(gPrograms.FFTVertical, "uSubtransformSize");                             
+    gl.uniform1f(gPrograms.FFTVertical.uTransformSize, gTexturesSize);
+    gl.enableVertexAttribArray(gPrograms.FFTVertical.aVertexPosition);
+
+    fragmentShader = getShader("skyShader", gl.FRAGMENT_SHADER, "");
+    gPrograms.sky = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.sky);
+
+    gPrograms.sky.aVertexPosition = gl.getAttribLocation(gPrograms.sky, "aPosition");
+    gPrograms.sky.uSkyParam1 = gl.getUniformLocation(gPrograms.sky, "uSkyParam1");                             
+    gPrograms.sky.uSkyParam2 = gl.getUniformLocation(gPrograms.sky, "uSkyParam2");                             
+    gPrograms.sky.uSkyParam3 = gl.getUniformLocation(gPrograms.sky, "uSkyParam3");                             
+    gPrograms.sky.uSkyParam4 = gl.getUniformLocation(gPrograms.sky, "uSkyParam4");                             
+    gPrograms.sky.uSkyParam5 = gl.getUniformLocation(gPrograms.sky, "uSkyParam5");                             
+    gPrograms.sky.uSkyParam6 = gl.getUniformLocation(gPrograms.sky, "uSkyParam6");                             
+
+    gPrograms.sky.uEyePosition = gl.getUniformLocation(gPrograms.sky, "uEyePosition");                             
+    gPrograms.sky.uSunPosition= gl.getUniformLocation(gPrograms.sky, "uSunPosition");                             
+    gPrograms.sky.uEyeCenter = gl.getUniformLocation(gPrograms.sky, "uEyeCenter");                             
+    gPrograms.sky.uEyeUp = gl.getUniformLocation(gPrograms.sky, "uEyeUp");                             
+    gPrograms.sky.uFOV = gl.getUniformLocation(gPrograms.sky, "uFOV");                             
+
+    gl.uniform3f(gPrograms.sky.uEyePosition, gSkyProperties.eye[0], gSkyProperties.eye[1], gSkyProperties.eye[2]);
+    gl.uniform3f(gPrograms.sky.uSunPosition, gSkyProperties.sunPosition[0], gSkyProperties.sunPosition[1], gSkyProperties.sunPosition[2]);
+    gl.uniform3f(gPrograms.sky.uEyeCenter, gSkyProperties.center[0], gSkyProperties.center[1], gSkyProperties.center[2]);
+    gl.uniform3f(gPrograms.sky.uEyeUp, gSkyProperties.up[0], gSkyProperties.up[1], gSkyProperties.up[2]);
+    gl.uniform1f(gPrograms.sky.uFOV, gCamera.FOV / 180.0 * Math.PI);
+
+    gl.uniform4f(gPrograms.sky.uSkyParam1, gSkyParameters.param1.x, gSkyParameters.param1.y, gSkyParameters.param1.z, gSkyParameters.param1.w);
+    gl.uniform4f(gPrograms.sky.uSkyParam2, gSkyParameters.param2.x, gSkyParameters.param2.y, gSkyParameters.param2.z, gSkyParameters.param2.w);
+    gl.uniform4f(gPrograms.sky.uSkyParam3, gSkyParameters.param3.x, gSkyParameters.param3.y, gSkyParameters.param3.z, gSkyParameters.param3.w);
+    gl.uniform4f(gPrograms.sky.uSkyParam4, gSkyParameters.param4.x, gSkyParameters.param4.y, gSkyParameters.param4.z, gSkyParameters.param4.w);
+    gl.uniform4f(gPrograms.sky.uSkyParam5, gSkyParameters.param5.x, gSkyParameters.param5.y, gSkyParameters.param5.z, gSkyParameters.param5.w);
+    gl.uniform4f(gPrograms.sky.uSkyParam6, gSkyParameters.param6.x, gSkyParameters.param6.y, gSkyParameters.param6.z, gSkyParameters.param6.w);
+
+    gl.enableVertexAttribArray(gPrograms.sky.aVertexPosition);
+    
+    vertexShader = getShader("oceanVertexShader", gl.VERTEX_SHADER, "");
+    fragmentShader = getShader("oceanFragmentShader", gl.FRAGMENT_SHADER, "");
+    gPrograms.ocean = createProgram(vertexShader, fragmentShader);
+    gl.useProgram(gPrograms.ocean);
+    gPrograms.ocean.aVertexPosition = gl.getAttribLocation(gPrograms.ocean, "aVertexPosition");
+    gPrograms.ocean.textureCoordAttribute = gl.getAttribLocation(gPrograms.ocean, "aTextureCoord");
+
+    gPrograms.ocean.uWaveHeightTexture = gl.getUniformLocation(gPrograms.ocean, "uWaveHeightTexture");
+    gPrograms.ocean.uMVMatrix = gl.getUniformLocation(gPrograms.ocean, "uMVMatrix");                             
+    gPrograms.ocean.uPMatrix = gl.getUniformLocation(gPrograms.ocean, "uPMatrix");                             
+
+    gl.uniform1i(gPrograms.ocean.uWaveHeightTexture, gTexturesIndexes.displacementMap);
+
+    gl.enableVertexAttribArray(gPrograms.ocean.aVertexPosition);
+
+    //alert(gSkyParameters.param1);
+    //alert(gSkyParameters.param2);
+    //alert(gSkyParameters.param3);
+    //alert(gSkyParameters.param4);
+    //alert(gSkyParameters.param5);
+    //alert(gSkyParameters.param6);
+}
+
+function createTexture(textureIndex, width, height, wrapS, wrapT, minFilter, magFilter) {
+    var texture = gl.createTexture();
+
+    gl.activeTexture(gl.TEXTURE0 + textureIndex);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
+
+    return texture;
+}
+
+function handleTextureLoaded(image, texture, textureIndex) {
+
+    gl.activeTexture(gl.TEXTURE0 + textureIndex);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    //gl.bindTexture(gl.TEXTURE_2D, null);
+
+    gNumberOfTexturesToLoad -= 1;
+}
+
+function createFramebuffer(texture) {
+    var framebuffer = gl.createFramebuffer();
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+    return framebuffer;
+}
+
+function getShader(id, type, addedDefines) {
+    var shaderScript = document.getElementById(id);
+
+    if (!shaderScript) {
+        return null;
+    }
+
+    var shaderString = "";
+    shaderString += addedDefines;
+
+    var k = shaderScript.firstChild;
+
+    while (k) {
+        if (k.nodeType == 3) {
+            shaderString += k.textContent;
+        }
+
+        k = k.nextSibling;
+    }
+
+    var shader;
+    shader = gl.createShader(type);
+
+    gl.shaderSource(shader, shaderString);
+    gl.compileShader(shader);
+
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        alert(gl.getShaderInfoLog(shader));
+
+        return null;
+    }
+
+    return shader;
+}
+
+function createProgram(vertexShader, fragmentShader) {
+    var program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        alert("Could not initalize shaders");
+    }
+
+    return program;
+}
+
+function initalizeBuffers() {
+    gTextures.h0k = createTexture(gTexturesIndexes.h0k, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+    gTextures.h0kminus = createTexture(gTexturesIndexes.h0kminus, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+    gTextures.htk = createTexture(gTexturesIndexes.htk, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+    gTextures.ping = createTexture(gTexturesIndexes.ping, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+    gTextures.pong = createTexture(gTexturesIndexes.pong, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+    gTextures.FFTOutput = createTexture(gTexturesIndexes.FFTOutput, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+    gTextures.displacementMap = createTexture(gTexturesIndexes.displacementMap, gTexturesSize, gTexturesSize, gl.REPEAT, gl.REPEAT, gl.NEAREST, gl.NEAREST);
+
+    gFrameBuffers.h0k = createFramebuffer(gTextures.h0k);
+    gFrameBuffers.h0kminus = createFramebuffer(gTextures.h0kminus);
+    gFrameBuffers.htk = createFramebuffer(gTextures.htk);
+    gFrameBuffers.ping = createFramebuffer(gTextures.ping);
+    gFrameBuffers.pong = createFramebuffer(gTextures.pong);
+    gFrameBuffers.FFTOutput = createFramebuffer(gTextures.FFTOutput);
+    gFrameBuffers.displacementMap = createFramebuffer(gTextures.displacementMap);
+
+    gTextures.noise0 = gl.createTexture();
+    gTextures.noise0.image = new Image();
+    gTextures.noise0.image.src = "noise0.jpg";
+    gTextures.noise0.image.onload = function() { handleTextureLoaded(gTextures.noise0.image, gTextures.noise0, gTexturesIndexes.noise0) };
+
+    gTextures.noise1 = gl.createTexture();
+    gTextures.noise1.image = new Image();
+    gTextures.noise1.image.src = "noise1.jpg";
+    gTextures.noise1.image.onload = function() { handleTextureLoaded(gTextures.noise1.image, gTextures.noise1, gTexturesIndexes.noise1) };
+
+    gTextures.noise2 = gl.createTexture();
+    gTextures.noise2.image = new Image();
+    gTextures.noise2.image.src = "noise2.jpg";
+    gTextures.noise2.image.onload = function() { handleTextureLoaded(gTextures.noise2.image, gTextures.noise2, gTexturesIndexes.noise2) };
+
+    gTextures.noise3 = gl.createTexture();
+    gTextures.noise3.image = new Image();
+    gTextures.noise3.image.src = "noise3.jpg";
+    gTextures.noise3.image.onload = function() { handleTextureLoaded(gTextures.noise3.image, gTextures.noise3, gTexturesIndexes.noise3) };
+
+    gTextureVertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTextureVertexBuffer);
+
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0]), gl.STATIC_DRAW);
+}
+
+function Vec3(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+}
+
+function Vec4() {
+    this.x = 0.0; 
+    this.y = 0.0; 
+    this.z = 0.0; 
+    this.w = 0.0;
+}
+
+function fromAdd(a, b) {
+    var res = new Vec4();
+
+    res.x = a.x + b.x;
+    res.y = a.y + b.y;
+    res.z = a.z + b.z;
+    res.w = a.w + b.w;
+
+    return res;
+}
+
+function fromDiv(a, b) {
+    var res = new Vec4();
+
+    res.x = a.x / b.x;
+    res.y = a.y / b.y;
+    res.z = a.z / b.z;
+    res.w = a.w / b.w;
+
+    return res;
+}
+
+function mulScalar(a, b) {
+    var res = new Vec4();
+
+    res.x = a.x * b;
+    res.y = a.y * b;
+    res.z = a.z * b;
+    res.w = a.w * b;
+
+    return res;
+}
+
+function sphericalToCartesian(r, azimuth, zenith) {
+    var x = r * Math.sin(zenith) * Math.sin(azimuth);
+    var y = r * Math.cos(zenith);
+    var z = r * Math.sin(zenith) * Math.cos(azimuth);
+
+    return [x, y, z];
+}
+
+function initalizeSkyParameters() {
+    var skyLambda = new Vec3(680e-9, 550e-9, 450e-9);
+    var skyK = new Vec3(0.686, 0.678, 0.666);
+
+    var earthRadius = 6.371e6;
+    var earthAtomsphereThickness = 0.1e6;
+
+    var clarity = 1 + gSkyProperties.clarity;
+    var twoPI = 2 * Math.PI;
+
+    var factor = 1.86e-31 / (clarity * Math.max(gSkyProperties.density, 0.001));
+
+    gSkyParameters.param2.x = factor / Math.pow(skyLambda.x, 4);
+
+    gSkyParameters.param2.y = factor / Math.pow(skyLambda.y, 4);
+    gSkyParameters.param2.z = factor / Math.pow(skyLambda.z, 4);
+
+    factor = 1.36e-19 * Math.max(gSkyProperties.pollution, 0.001);
+    gSkyParameters.param3.x = factor * skyK.x * Math.pow(twoPI / skyLambda.x, 2);
+    gSkyParameters.param3.y = factor * skyK.y * Math.pow(twoPI / skyLambda.y, 2);
+    gSkyParameters.param3.z = factor * skyK.z * Math.pow(twoPI / skyLambda.z, 2);
+
+    gSkyParameters.param1 = fromAdd(gSkyParameters.param2, gSkyParameters.param3);
+    gSkyParameters.param6 = fromAdd(gSkyParameters.param2, gSkyParameters.param3);
+    gSkyParameters.param6 = mulScalar(gSkyParameters.param6,-1.0);
+    gSkyParameters.param2 = fromDiv(gSkyParameters.param2,gSkyParameters.param1);
+    gSkyParameters.param3 = fromDiv(gSkyParameters.param3,gSkyParameters.param1);
+
+    var g = (1 - gSkyProperties.pollution) * 0.2 + 0.75;
+
+    gSkyParameters.param1.w =  Math.pow((1 - g), 2) / (4 * Math.PI);
+    gSkyParameters.param2.w = -2 * g;
+    gSkyParameters.param3.w = 1 + Math.pow(g, 2);
+
+    var planetRadius = earthRadius * gSkyProperties.planetScale;
+    var atmosphereRadius = planetRadius + earthAtomsphereThickness * gSkyProperties.atmosphereScale;
+
+    gSkyParameters.param4.x = planetRadius;
+    gSkyParameters.param4.y = atmosphereRadius * atmosphereRadius;
+    gSkyParameters.param4.z = 0.15 + 0.75 *(0.5);
+    gSkyParameters.param4.w = atmosphereRadius * atmosphereRadius - planetRadius * planetRadius;
+
+    gSkyParameters.param1.y = -(1 - 0.015 * gSkyProperties.sunDiskRadius);
+    gSkyParameters.param1.x = 1 / (1 + gSkyParameters.param1.y);
+    gSkyParameters.param1.y *= gSkyParameters.param1.x;
+
+    gSkyParameters.param5.x = 1.0;
+    gSkyParameters.param5.y = 1.0;
+    gSkyParameters.param5.z = 1.0;
+    gSkyParameters.param5.w = 1.0;
+    gSkyParameters.param5 = mulScalar(gSkyParameters.param5,gSkyProperties.brightness);
+    gSkyParameters.param5.w = gSkyProperties.sunDiskIntensity;
+
+    gSkyParameters.param6.w = clarity * 3 / (16 * Math.PI);
+
+    gSkyProperties.sunPosition = sphericalToCartesian(1000.0, gSkyProperties.sunAzimuth, gSkyProperties.sunZenith);
+
+    var zenith = (Math.PI / 2.0);
+    var azimuth = Math.PI / 3.2;
+    gSkyProperties.faceDirection = sphericalToCartesian(1.0, azimuth, zenith);
+
+    gSkyProperties.center = [gSkyProperties.eye[0] + gSkyProperties.faceDirection[0], gSkyProperties.eye[1] + gSkyProperties.faceDirection[1], gSkyProperties.eye[2] + gSkyProperties.faceDirection[2]];
+}
+
+function initalizeGrid() {
+    var vertices = new Float32Array(gTexturesSize*gTexturesSize*3);
+    var textureCoordinates = new Float32Array(gTexturesSize*gTexturesSize*2);
+    for (var i = 0; i < gTexturesSize; i++) {
+        for (var j = 0; j < gTexturesSize; j++) {
+            var currentIndex = j + i*gTexturesSize;
+            vertices[(currentIndex*3)] = (j - (gTexturesSize-1)/2.0) / (gTexturesSize - 1) * gPatchSize;
+            vertices[(currentIndex*3)+1] = 0.0;
+            vertices[(currentIndex*3)+2] = (i - (gTexturesSize-1)/2.0) / (gTexturesSize - 1) * gPatchSize;
+
+            textureCoordinates[(currentIndex*2)] = i / gTexturesSize;
+            textureCoordinates[(currentIndex*2)+1] = j / gTexturesSize;
+        }
+    }
+
+    gOceanBuffers.oceanVertices = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, gOceanBuffers.oceanVertices);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+    gOceanBuffers.oceanTextureCoordinates = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, gOceanBuffers.oceanTextureCoordinates);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordinates), gl.STATIC_DRAW);
+
+    var indices = new Uint32Array((gTexturesSize-1) * (gTexturesSize-1) * 6);
+    var index = 0;
+    for (var i = 0; i < gTexturesSize-1; i++) {
+        for (var j = 0; j < gTexturesSize-1; j++) {
+            indices[(index*6)]   = (j) + (i) * gTexturesSize;
+            indices[(index*6)+1] = (j+1) + (i) * gTexturesSize;
+            indices[(index*6)+2] = (j) + (i+1) * gTexturesSize;
+            indices[(index*6)+3] = (j+1) + (i) * gTexturesSize;
+            indices[(index*6)+4] = (j+1) + (i+1) * gTexturesSize;
+            indices[(index*6)+5] = (j) + (i+1) * gTexturesSize;
+            index++;
+        }
+    }
+
+    gOceanBuffers.oceanIndices = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gOceanBuffers.oceanIndices);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
+
+    gOceanBuffers.oceanIndices.numberOfItems = index*6;
+}
+
+function initalizeMatrices() {
+    gMatrices.modelView = mat4.create();
+    gMatrices.perspective = mat4.create();
+}
+
+function main() {
+    gCanvas = document.getElementById("canvas");
+    initalizeCanvas();
+    initalizeCamera();
+    initalizeKeyHandlers();
+    initalizeWebGL();
+    initalizeBuffers();
+    initalizeSkyParameters();
+    initalizePrograms();
+    initalizeMatrices();
+    initalizeGrid();
+
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.enable(gl.DEPTH_TEST);
+
+    gLastDeltaTime = Date.now();
+    tick();
+}
+</script>
+
+<body onload="main()">
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
