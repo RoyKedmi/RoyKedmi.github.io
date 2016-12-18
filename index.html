@@ -523,10 +523,8 @@ function initalizeWebGL() {
 }
 
 function initalizeCanvas() {
-    var fewPixelsFromEnd = 20;
-
-    gCanvas.width = window.innerWidth - fewPixelsFromEnd;
-    gCanvas.height = window.innerHeight - fewPixelsFromEnd;
+    gCanvas.width = window.innerWidth;
+    gCanvas.height = window.innerHeight;
 }
 
 function initalizeKeyHandlers() {
@@ -563,7 +561,6 @@ function handleKeyDown(event) {
         gCamera.cameraZ += 1.0;
     } 
     if (keyCode == enterKeyCode) {
-        alert(gCamera.cameraZ);
     }
 }
 
@@ -1183,8 +1180,22 @@ function initalizeMatrices() {
     gMatrices.perspective = mat4.create();
 }
 
+function initalizeCSS() {
+
+    var cssData = `* { margin:0; padding:0; }
+                     html, body { width:100%; height:100%; }
+                     canvas { display:block; }`;
+
+    var css = document.createElement("style");
+    css.type = "text/css";
+    css.innerHTML = cssData;
+
+    document.body.appendChild(css);
+}
+
 function main() {
     gCanvas = document.getElementById("canvas");
+    initalizeCSS();
     initalizeCanvas();
     initalizeCamera();
     initalizeKeyHandlers();
