@@ -1,0 +1,246 @@
+<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+<meta content="utf-8" http-equiv="encoding">
+
+<script>
+
+//The main canvas we are drawing on
+var gCanvas;
+
+//The last time the tick function ran, to determine the delta time
+var gLastDeltaTime;
+
+var gIsImageLoaded = false;
+
+var gCurrentScore = 0.0;
+var gLastScore = 0.0;
+
+var gNumOfTriangles = 50;
+var gTriangles = [];
+var gMutatedTriangles = [];
+var gBaseImage = new Image();
+
+function initalizeCSS() {
+
+    var cssData = `* { margin:0; padding:0; }
+                     html, body { width:100%; height:100%; }
+                     canvas { display:block; }`;
+
+    //var cssData = `* { margin:0; padding:0; }
+    //                 html, body { width:100%; height:100%; }
+    //                 canvas { display:block; }`;
+
+    var css = document.createElement("style");
+    css.type = "text/css";
+    css.innerHTML = cssData;
+
+    document.body.appendChild(css);
+}
+
+function initalizeCanvas() {
+    gCanvas.width = window.innerWidth / 2;
+    gCanvas.height = window.innerHeight;
+
+    gImageCanvas.width = window.innerWidth / 2;
+    gImageCanvas.height = window.innerHeight;
+    gImageCanvas.style.left = gCanvas.width;
+    gImageCanvas.style.top = "0px";
+    gImageCanvas.style.position = "absolute";
+
+    //load default image
+    gBaseImage.src = "jim_carrey.jpg"
+    gBaseImage.onload = function() {
+        var ctx = gImageCanvas.getContext('2d');
+        ctx.drawImage(gBaseImage, 0, 0, gBaseImage.width, gBaseImage.height, 0, 0, gImageCanvas.width, gImageCanvas.height);
+        gIsImageLoaded = true;
+    }
+    
+    
+    //clearCanvas();
+}
+
+//////////////PSEUDO RANDOM GENERATOR///////////////////////
+var m_w = 123456789;
+var m_z = 987654321;
+var mask = 0xffffffff;
+
+function setRandomSeed(seed) {
+    m_w = seed;
+    m_z = 987654321;
+}
+
+// Returns a number between 0 and 1.0
+function getRandomNumFromSeed() {
+    m_z = (36969 * (m_z & 65535) + (m_z >> 16)) & mask;
+    m_w = (18000 * (m_w & 65535) + (m_w >> 16)) & mask;
+    var result = ((m_z << 16) + m_w) & mask;
+    result /= 4294967296;
+
+    return result + 0.5;
+}
+
+function getRandomIntInRange(min, max) {
+    return Math.floor(min + (getRandomNumFromSeed() * (max - min + 1)))
+}
+
+function getRandomFloatInRange(min, max) {
+    return min + (getRandomNumFromSeed() * (max - min))
+}
+////////////////////////////////////////////////////////////
+
+function drawTriangle(x, y, z, color) {
+    var canvas = document.getElementById('canvas');
+    if (canvas.getContext) {
+        var ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        ctx.moveTo(x[0], x[1]);
+        ctx.lineTo(y[0], y[1]);
+        ctx.lineTo(z[0], z[1]);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(" + color[0] + "," + color[1] + "," + color[2] + "," + color[3] + ")";
+        ctx.fill();
+
+    }
+}
+
+function tick() {
+    window.requestAnimationFrame(tick);
+
+    var currentTime = Date.now();
+    var deltaTime = (currentTime - gLastDeltaTime) / 1000.0;
+
+    gLastDeltaTime = currentTime;
+
+    if (gIsImageLoaded) {
+        gCurrentScore = getDiffScore();
+        if (gCurrentScore > gLastScore) {
+            console.log(gCurrentScore);
+            gLastScore = gCurrentScore;
+            gTriangles = gMutatedTriangles.slice();
+        }
+        drawAllTriangles(gTriangles);
+        mutate();
+        drawAllTriangles(gMutatedTriangles);
+    }
+}
+
+function generateRandomTriangle() {
+    x = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)]
+    y = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)]
+    z = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)]
+    color = [getRandomIntInRange(0, 255), getRandomIntInRange(0, 255), getRandomIntInRange(0, 255), getRandomFloatInRange(0.2, 0.7)]
+    return [x, y, z, color]
+}
+
+function clearCanvas() {
+    var ctx = gCanvas.getContext("2d");
+    ctx.fillStyle = "rgba(0, 0, 0, 1.0)";
+    ctx.fillRect(0, 0, gCanvas.width, gCanvas.height);
+}
+
+function drawAllTriangles(triangles) {
+    clearCanvas();
+
+    for(i = 0; i < gNumOfTriangles; i++) {
+        triangle = gTriangles[i];
+        drawTriangle(triangle[0], triangle[1], triangle[2], triangle[3])
+    }
+}
+
+function clamp(num, min, max) {
+    return num <= min ? min : num >= max ? max : num;
+}
+
+function mutate() {
+    var triangleIndex = getRandomIntInRange(0, gNumOfTriangles - 1);
+    var coordinateIndex = getRandomIntInRange(0, 2);
+    var widthOrHeight = getRandomIntInRange(0, 1);
+    var randomVal = getRandomIntInRange(0, 30);
+    var addOrSub = getRandomIntInRange(0, 1);
+
+    var red = getRandomIntInRange(0, 255);
+    var green = getRandomIntInRange(0, 255);
+    var blue = getRandomIntInRange(0, 255);
+    var alpha = getRandomFloatInRange(0.2, 0.7);
+
+    gMutatedTriangles = gTriangles.slice();
+    if (addOrSub) {
+        gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] = clamp(gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] + randomVal)
+    } else {
+        gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] = clamp(gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] - randomVal)
+    }
+
+    gMutatedTriangles[triangleIndex][3][0] = red;
+    gMutatedTriangles[triangleIndex][3][1] = green;
+    gMutatedTriangles[triangleIndex][3][2] = blue;
+    gMutatedTriangles[triangleIndex][3][3] = alpha;
+}
+
+// returns a number between 0 and 1. 
+// when the canvases are pixel perfect it should return 1
+function getDiffScore() {
+    var originalImageData = gImageCanvas.getContext('2d').getImageData(0, 0, gImageCanvas.width, gImageCanvas.height).data;
+    var geneticImageData  = gCanvas.getContext('2d').getImageData(0, 0, gCanvas.width, gCanvas.height).data;
+
+    var score = 0.0;
+    var i = 0;
+    for(i = 0; i < originalImageData.length; i+=4) {
+        var pixelScore = 0.0;
+
+        var red1 = originalImageData[i + 0];
+        var green1 = originalImageData[i + 1];
+        var blue1 = originalImageData[i + 2];
+        var alpha1 = originalImageData[i + 3];
+
+        var red2 = geneticImageData[i + 0];
+        var green2 = geneticImageData[i + 1];
+        var blue2 = geneticImageData[i + 2];
+        var alpha2 = geneticImageData[i + 3];
+
+        
+        pixelScore += 1.0 - (Math.abs(red1 - red2) / 255.0)
+        pixelScore += 1.0 - (Math.abs(green1 - green2) / 255.0)
+        pixelScore += 1.0 - (Math.abs(blue1 - blue2) / 255.0)
+        pixelScore += 1.0 - (Math.abs(alpha1 - alpha2) / 255.0)
+
+        //console.log(Math.abs(red1 - red2));
+        //console.log(blue1)
+        pixelScore = pixelScore / 4.0;
+        score += pixelScore;
+        //break;
+    }
+
+    score = score / (gImageCanvas.width * gImageCanvas.height);
+    //score = score / (originalImageData.length / 4.0);
+    //console.log(score);
+    return score;
+}
+
+function main() {
+    gCanvas = document.getElementById("canvas");
+    gImageCanvas = document.getElementById("imageCanvas");
+    initalizeCSS();
+    initalizeCanvas();
+
+    gLastDeltaTime = Date.now();
+    //setRandomSeed(1337);
+    setRandomSeed(Math.random()*100000);
+    var i = 0;
+
+    for(i = 0; i < gNumOfTriangles; i++) {
+        triangle = generateRandomTriangle();
+        gTriangles.push(triangle);
+    }
+    gMutatedTriangles = gTriangles.slice()
+
+    tick();
+
+    //getDiffScore();
+    //drawTriangle([100, 121], [100, 300], [300, 300], [24, 122, 0, 0.3])
+    //console.log(triangle)
+}
+</script>
+
+<body onload="main()">
+    <canvas id="canvas" width="500" height="500"></canvas>
+    <canvas id="imageCanvas" width="500" height="500"></canvas>
+</body>
