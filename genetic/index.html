@@ -1,6 +1,16 @@
 <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
 <meta content="utf-8" http-equiv="encoding">
 
+<!-- 
+    Contact me:
+        Roy Kedmi
+        rskedmi@gmail.com
+
+    This is a genetic algorithm to an image.
+    Big thanks to the internet for giving me knowledge.
+
+-->
+<html>
 <script>
 
 //The main canvas we are drawing on
@@ -10,14 +20,24 @@ var gCanvas;
 var gLastDeltaTime;
 
 var gIsImageLoaded = false;
+var gIsShouldSetNewSettings = false;
 
 var gCurrentScore = 0.0;
 var gLastScore = 0.0;
+var gCurrentChangedTriangleIndex = 0;
 
-var gNumOfTriangles = 50;
 var gTriangles = [];
 var gMutatedTriangles = [];
 var gBaseImage = new Image();
+
+//Settings
+var gNumOfTriangles = 50;
+var gTriangleLocationDiffMax = 60;
+var gColorDiffMax = 30;
+var gAlphaMin = 0.2;
+var gAlphaMax = 0.7;
+var gGenerationCount = 0;
+var gRandomSeed = 0.0;
 
 function initalizeCSS() {
 
@@ -25,15 +45,82 @@ function initalizeCSS() {
                      html, body { width:100%; height:100%; }
                      canvas { display:block; }`;
 
-    //var cssData = `* { margin:0; padding:0; }
-    //                 html, body { width:100%; height:100%; }
-    //                 canvas { display:block; }`;
-
     var css = document.createElement("style");
     css.type = "text/css";
     css.innerHTML = cssData;
 
     document.body.appendChild(css);
+
+    var controls = document.getElementsByClassName("controls")[0];
+    controls.addEventListener("click", function() {
+        var panel = this.nextElementSibling;
+
+        if (panel.style.display === "block") {
+            panel.style.display = "none";
+        } else {
+            panel.style.display = "block";
+        }
+    });
+
+    var applyBTN = document.getElementsByClassName("applyBTN")[0];
+    applyBTN.addEventListener("click", function() {
+        gIsShouldSetNewSettings = true;
+    });
+
+    var triangleNumSlider = document.getElementById("numberOfTrianglesSlider");
+    var triangleNumValue = document.getElementById("numOfTrianglesValue");
+    triangleNumValue.innerHTML = triangleNumSlider.value;
+    triangleNumSlider.oninput = function() {
+        triangleNumValue.innerHTML = this.value;
+        gNumOfTriangles = parseInt(this.value);
+    }
+
+    var triangleDiffSlider = document.getElementById("triangleLocationDiffMaxSlider");
+    var triangleDiffValue = document.getElementById("triangleLocationDiffValue");
+    triangleDiffValue.innerHTML = triangleDiffSlider.value;
+    triangleDiffSlider.oninput = function() {
+        triangleDiffValue.innerHTML = this.value;
+        gTriangleLocationDiffMax = parseInt(this.value);
+    }
+
+    var minAlphaSlider = document.getElementById("minAlphaSlider");
+    var minAlphaValue = document.getElementById("minAlphaValue");
+    minAlphaValue.innerHTML = minAlphaSlider.value;
+    minAlphaSlider.oninput = function() {
+        minAlphaValue.innerHTML = this.value;
+        gAlphaMin = parseFloat(this.value);
+    }
+
+    var maxAlphaSlider = document.getElementById("maxAlphaSlider");
+    var maxAlphaValue = document.getElementById("maxAlphaValue");
+    maxAlphaValue.innerHTML = maxAlphaSlider.value;
+    maxAlphaSlider.oninput = function() {
+        maxAlphaValue.innerHTML = this.value;
+        gAlphaMax = parseFloat(this.value);
+    }
+
+    var imageLoader = document.getElementById('imageLoader');
+    imageLoader.addEventListener('change', handleImage, false);
+}
+
+function handleImage(e){
+    var reader = new FileReader();
+    if (e.target.files.length > 0) {
+        gIsImageLoaded = false;
+        reader.onload = function(event){
+            gBaseImage.src = event.target.result;
+        }
+        reader.readAsDataURL(e.target.files[0]);     
+    }
+}
+
+function applyNewSettings() {
+    gRandomSeed = Math.random()*100000;
+    clearCanvas();
+    initalizeTriangles();
+    gLastScore = 0.0;
+    gGenerationCount = 0;
+    gCurrentChangedTriangleIndex = 0;
 }
 
 function initalizeCanvas() {
@@ -52,10 +139,8 @@ function initalizeCanvas() {
         var ctx = gImageCanvas.getContext('2d');
         ctx.drawImage(gBaseImage, 0, 0, gBaseImage.width, gBaseImage.height, 0, 0, gImageCanvas.width, gImageCanvas.height);
         gIsImageLoaded = true;
+        gIsShouldSetNewSettings = true;
     }
-    
-    
-    //clearCanvas();
 }
 
 //////////////PSEUDO RANDOM GENERATOR///////////////////////
@@ -102,6 +187,29 @@ function drawTriangle(x, y, z, color) {
     }
 }
 
+function copyTriangle(triangle) {
+    var x = triangle[0].slice();
+    var y = triangle[1].slice();
+    var z = triangle[2].slice();
+    var c = triangle[3].slice();
+
+    return [x, y, z, c];
+}
+
+function copyAllTriangles(triangles) {
+    var newTriangles = [];
+    var i = 0;
+    for(i = 0; i < triangles.length; i++) {
+        newTriangles.push(copyTriangle(triangles[i]));
+    }
+
+    return newTriangles;
+}
+
+function copyTriangleFromArrayToArray(src, dest) {
+    dest[gCurrentChangedTriangleIndex] = copyTriangle(src[gCurrentChangedTriangleIndex]);
+}
+
 function tick() {
     window.requestAnimationFrame(tick);
 
@@ -110,25 +218,38 @@ function tick() {
 
     gLastDeltaTime = currentTime;
 
+    if (gIsShouldSetNewSettings) {
+        gIsShouldSetNewSettings = false;
+        applyNewSettings();
+    }
+    var generationLabel = document.getElementById("generationValue");
+    generationLabel.innerHTML = gGenerationCount;
+
     if (gIsImageLoaded) {
         gCurrentScore = getDiffScore();
         if (gCurrentScore > gLastScore) {
-            console.log(gCurrentScore);
             gLastScore = gCurrentScore;
-            gTriangles = gMutatedTriangles.slice();
+
+            copyTriangleFromArrayToArray(gMutatedTriangles, gTriangles);
+        } else {
+            copyTriangleFromArrayToArray(gTriangles, gMutatedTriangles);
         }
         drawAllTriangles(gTriangles);
         mutate();
+        gGenerationCount = gGenerationCount + 1;
         drawAllTriangles(gMutatedTriangles);
     }
 }
 
 function generateRandomTriangle() {
-    x = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)]
-    y = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)]
-    z = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)]
-    color = [getRandomIntInRange(0, 255), getRandomIntInRange(0, 255), getRandomIntInRange(0, 255), getRandomFloatInRange(0.2, 0.7)]
-    return [x, y, z, color]
+    x = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)];
+    y = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)];
+    z = [getRandomIntInRange(0, gCanvas.width), getRandomIntInRange(0, gCanvas.height)];
+    color = [getRandomIntInRange(0, 255), getRandomIntInRange(0, 255), getRandomIntInRange(0, 255), getRandomFloatInRange(gAlphaMin, gAlphaMax)];
+    
+    //TODO: remove me
+    //return [[0, 0], [0, 0], [0, 0], [1,1,1,0.5]];
+    return [x, y, z, color];
 }
 
 function clearCanvas() {
@@ -140,8 +261,8 @@ function clearCanvas() {
 function drawAllTriangles(triangles) {
     clearCanvas();
 
-    for(i = 0; i < gNumOfTriangles; i++) {
-        triangle = gTriangles[i];
+    for(i = 0; i < triangles.length; i++) {
+        triangle = triangles[i];
         drawTriangle(triangle[0], triangle[1], triangle[2], triangle[3])
     }
 }
@@ -151,28 +272,37 @@ function clamp(num, min, max) {
 }
 
 function mutate() {
-    var triangleIndex = getRandomIntInRange(0, gNumOfTriangles - 1);
+    var triangleIndex = getRandomIntInRange(0, gTriangles.length - 1);
     var coordinateIndex = getRandomIntInRange(0, 2);
-    var widthOrHeight = getRandomIntInRange(0, 1);
-    var randomVal = getRandomIntInRange(0, 30);
     var addOrSub = getRandomIntInRange(0, 1);
+    var widthOrHeight = getRandomIntInRange(0, 1);
+    var colorIndex = getRandomIntInRange(0, 3);
 
-    var red = getRandomIntInRange(0, 255);
-    var green = getRandomIntInRange(0, 255);
-    var blue = getRandomIntInRange(0, 255);
-    var alpha = getRandomFloatInRange(0.2, 0.7);
+    var randomVal0 = getRandomIntInRange(0, gTriangleLocationDiffMax);
+    var randomVal1 = getRandomIntInRange(0, gTriangleLocationDiffMax);
+    var randomVal2 = getRandomIntInRange(0, gTriangleLocationDiffMax);
+    var randomVal3 = getRandomIntInRange(0, gTriangleLocationDiffMax);
+    var randomVal4 = getRandomIntInRange(0, gTriangleLocationDiffMax);
+    var randomVal5 = getRandomIntInRange(0, gTriangleLocationDiffMax);
 
-    gMutatedTriangles = gTriangles.slice();
+    var colorDiff = getRandomIntInRange(0, gColorDiffMax);
+    var alpha = getRandomFloatInRange(gAlphaMin, gAlphaMax);
+
+    var colorDiffs = [colorDiff, colorDiff, colorDiff, alpha];
+    var colorsBounderies = [[0, 255], [0, 255], [0, 255], [gAlphaMin, gAlphaMax]];
+
+    gCurrentChangedTriangleIndex = triangleIndex;
     if (addOrSub) {
-        gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] = clamp(gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] + randomVal)
+        gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] = clamp(gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] + randomVal0, 0, widthOrHeight ? gCanvas.width : gCanvas.height)
     } else {
-        gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] = clamp(gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] - randomVal)
+        gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] = clamp(gMutatedTriangles[triangleIndex][coordinateIndex][widthOrHeight] - randomVal0, 0, widthOrHeight ? gCanvas.width : gCanvas.height)
     }
 
-    gMutatedTriangles[triangleIndex][3][0] = red;
-    gMutatedTriangles[triangleIndex][3][1] = green;
-    gMutatedTriangles[triangleIndex][3][2] = blue;
-    gMutatedTriangles[triangleIndex][3][3] = alpha;
+    if (addOrSub) {
+        gMutatedTriangles[triangleIndex][3][colorIndex] = clamp(gMutatedTriangles[triangleIndex][3][colorIndex] + colorDiffs[colorIndex], colorsBounderies[colorIndex][0], colorsBounderies[colorIndex][1]);
+    } else {
+        gMutatedTriangles[triangleIndex][3][colorIndex] = clamp(gMutatedTriangles[triangleIndex][3][colorIndex] - colorDiffs[colorIndex], colorsBounderies[colorIndex][0], colorsBounderies[colorIndex][1]);
+    }
 }
 
 // returns a number between 0 and 1. 
@@ -202,17 +332,26 @@ function getDiffScore() {
         pixelScore += 1.0 - (Math.abs(blue1 - blue2) / 255.0)
         pixelScore += 1.0 - (Math.abs(alpha1 - alpha2) / 255.0)
 
-        //console.log(Math.abs(red1 - red2));
-        //console.log(blue1)
         pixelScore = pixelScore / 4.0;
         score += pixelScore;
-        //break;
     }
 
     score = score / (gImageCanvas.width * gImageCanvas.height);
-    //score = score / (originalImageData.length / 4.0);
-    //console.log(score);
     return score;
+}
+
+function initalizeTriangles() {
+    setRandomSeed(gRandomSeed);
+    var i = 0;
+
+    gTriangles = [];
+    gMutatedTriangles = [];
+
+    for(i = 0; i < gNumOfTriangles; i++) {
+        triangle = generateRandomTriangle();
+        gTriangles.push(triangle);
+    }
+    gMutatedTriangles = copyAllTriangles(gTriangles);
 }
 
 function main() {
@@ -222,25 +361,161 @@ function main() {
     initalizeCanvas();
 
     gLastDeltaTime = Date.now();
-    //setRandomSeed(1337);
-    setRandomSeed(Math.random()*100000);
-    var i = 0;
 
-    for(i = 0; i < gNumOfTriangles; i++) {
-        triangle = generateRandomTriangle();
-        gTriangles.push(triangle);
-    }
-    gMutatedTriangles = gTriangles.slice()
+    gRandomSeed = Math.random()*100000;
+    initalizeTriangles();
 
     tick();
-
-    //getDiffScore();
-    //drawTriangle([100, 121], [100, 300], [300, 300], [24, 122, 0, 0.3])
-    //console.log(triangle)
 }
 </script>
 
 <body onload="main()">
+<style>
+div {
+    display: block;
+}
+.controls{
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 245px;
+  z-index: 2;
+  color: white;
+  font-family: sans-serif;
+  background-color: rgba(10,10,10,0.5);
+  border-radius: 10px;
+}
+
+.active, .controls:hover {
+    background-color: #ccc;
+}
+
+.panel {
+    background-color: white;
+    display: none;
+    overflow: hidden;
+    z-index: 2;
+    position: absolute;
+    top: 30px;
+    left: 10px;
+    width: 245px;
+    z-index: 2;
+    color: white;
+    font-family: sans-serif;
+    background-color: rgba(10,10,10,0.5);
+    border-radius: 10px;
+    padding: 10;
+}
+
+.applyBTN {
+  width: 245px;
+  z-index: 2;
+  color: white;
+  font-family: sans-serif;
+  background-color: rgba(10,10,10,0.5);
+  border-radius: 10px;
+}
+
+.slidecontainer {
+    width: 100%; /* Width of the outside container */
+    padding: 2px;
+}
+.slider {
+    -webkit-appearance: none;  /* Override default CSS styles */
+    appearance: none;
+    width: 100%; /* Full-width */
+    height: 25px; /* Specified height */
+    background: #d3d3d3; /* Grey background */
+    outline: none; /* Remove outline */
+    opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+    -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+    transition: opacity .2s;
+}
+/* Mouse-over effects */
+.slider:hover {
+    opacity: 1; /* Fully shown on mouse-over */
+}
+/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */ 
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    width: 25px; /* Set a specific slider handle width */
+    height: 25px; /* Slider handle height */
+    background: #0066ff;
+    cursor: pointer; /* Cursor on hover */
+}
+
+.slider::-moz-range-thumb {
+    width: 25px; /* Set a specific slider handle width */
+    height: 25px; /* Slider handle height */
+    background: #4CAF50; /* Green background */
+    cursor: pointer; /* Cursor on hover */
+}
+
+.sliderValueParent {
+    z-index: 2;
+    position: relative;
+}
+.sliderValue {
+    z-index: 3;
+    padding: 4px;
+    position: absolute;
+    top: 0;
+    left: 40%;
+}
+.settingTitleLabel {
+    color: white;
+}
+</style>
+
+<button class="controls"><b>Settings</b></button>
+<div class="panel"> 
+    <div class="slidecontainer">
+      <a class="settingTitleLabel"><b>Number of Triangles</b></a>
+      <div class="sliderValueParent">
+      <input type="range" min="1" max="1024" value="50" class="slider" id="numberOfTrianglesSlider">
+          <div class="sliderValue">
+              <b><center><span id="numOfTrianglesValue" style="color:black;"></span></center></b>
+          </div>
+      </div>
+    </div>
+    <div class="slidecontainer">
+      <a class="settingTitleLabel"><b>Triangle Location Diff Max</b></a>
+      <div class="sliderValueParent">
+      <input type="range" min="1" max="2048" value="60" class="slider" id="triangleLocationDiffMaxSlider">
+          <div class="sliderValue">
+              <b><center><span id="triangleLocationDiffValue" style="color:black;"></span></center></b>
+          </div>
+      </div>
+    </div>
+    <div class="slidecontainer">
+      <a class="settingTitleLabel"><b>Min Color Alpha</b></a>
+      <div class="sliderValueParent">
+      <input type="range" min="0.0" max="1" value="0.2" step="0.01" class="slider" id="minAlphaSlider">
+          <div class="sliderValue">
+              <b><center><span id="minAlphaValue" style="color:black;"></span></center></b>
+          </div>
+      </div>
+    </div>
+    <div class="slidecontainer">
+      <a class="settingTitleLabel"><b>Max Color Alpha</b></a>
+      <div class="sliderValueParent">
+      <input type="range" min="0.0" max="1" value="0.7" step="0.01" class="slider" id="maxAlphaSlider">
+          <div class="sliderValue">
+              <b><center><span id="maxAlphaValue" style="color:black;"></span></center></b>
+          </div>
+      </div>
+    </div>
+
+    <a class="settingTitleLabel"><b>Change Image</b></a> 
+    <input type="file" id="imageLoader" name="imageLoader"/> 
+
+    <a class="settingTitleLabel"><b>Generation: <span id="generationValue"></span></b></a>
+    <button class="applyBTN"><b>Apply</b></button>
+</div>
+<div>
     <canvas id="canvas" width="500" height="500"></canvas>
     <canvas id="imageCanvas" width="500" height="500"></canvas>
+</div>
 </body>
+</html>
