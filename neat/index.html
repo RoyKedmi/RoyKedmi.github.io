@@ -1,0 +1,1010 @@
+<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+<meta content="utf-8" http-equiv="encoding">
+
+<!-- 
+    Contact me:
+        Roy Kedmi
+        rskedmi@gmail.com
+-->
+<html>
+<!-- <script src="Box2d.min.js"></script> -->
+<script src="Box2d.js"></script>
+<script>
+var box2d;
+
+var gCanvas;
+var gBox2DScale = 30;
+var gWorldStepRate = 1 / 60;
+var gWorldVelocityIterations = 10;
+var gWorldPositionIterations = 10;
+var gWallsThickness = 60;
+var gWorld;
+var gCircle;
+var gDestroyedObjects = [];
+
+var gLastDeltaTime;
+var gTimeNotUpdated = 0;
+var gTimeBetweenEnemyDrops = 0;
+
+//movement 
+var gIsCircleMovingLeft = false;
+var gIsCircleMovingRight = false;
+var gIsCanJump = true;
+
+var gMovingVelocity = 30;
+var gJumpingPulse = -450;
+
+var gIsResetWorld = false;
+
+var gCurrentScore = 0;
+
+//Settings
+var gCircleRadius = 2;
+var gGravityX = 0.0;
+var gGravityY = 4*9.8;
+var gBulletVelocity = 2000;
+var gBulletThickness = 10;
+var gBulletLength = 30;
+var gShootingCooldown = 0.5;
+var gScorePerKill = 20.0;
+
+var gIsShootingOnCooldown = false;
+var gTimeBetweenShooting = 0;
+//seconds
+var gEnemiesDropInterval = 1.0;
+var gRandomSeed = 0.0;
+
+var gCurrentRaycastIndex = 0;
+var gNumberOfRays = 100;
+var gCurrentRaycatedPoints = [];
+var gCurrentRaycastFractions = [];
+var gRayLength = 1000;
+
+//enemies size
+var gMinEnemyWidth = 50;
+var gMaxEnemyWidth = 100;
+var gMinEnemyHeight = 50;
+var gMaxEnemyHeight = 100;
+
+var gObjectTypes = { GROUND : 0, WALL: 1, CIRCLE: 2, ENEMY: 3, BULLET: 4 };
+var gBulletDirection = {RIGHT: 0, LEFT: 1, UP: 2, DOWN: 3};
+var gCurrentlyClickedKeys = { "rightClick": 0, "leftClick": 0, "upClick": 0, "shootRight": 0, "shootLeft": 0, "shootUp": 0, "shootDown": 0};
+var gClickedKeysOutput = [0, 0, 0, 0, 0, 0, 0];
+
+var gMutationRateStep = 0.5;
+var gPerturbChance = 0.9;
+var gLinkMutationRate = 0.9;
+var gConnectionMutationRate = 0.9;
+var gMutationRateBias = 0.9;
+var gNodeMutationRate = 0.9;
+var gEnableMutationRate = 0.9;
+var gDisableMutationRate = 0.9;
+var gCurrentNetwork;
+class Genome {
+    constructor(numInputs, numOutputs) {
+        this.connectionGenes = [];
+        this.nodeGenes = [];
+        this.numInputs = numInputs;
+        this.numOutputs = numOutputs;
+        this.currentNodeId = 0;
+        this.currentConnectionId = 0;
+        this.fitness = 0;
+        this.currentInnovation = 0;
+
+        var i = 0;
+        for (i = 0; i < this.numInputs; i++) {
+            this.nodeGenes.push(new NodeGene(gNodeType.INPUT, this.currentNodeId));
+            this.currentNodeId += 1;
+        }
+
+        i = 0;
+        for (i = 0; i < this.numOutputs; i++) {
+            this.nodeGenes.push(new NodeGene(gNodeType.OUTPUT, this.currentNodeId));
+            this.currentNodeId += 1;
+        }
+    }
+
+
+    getRandomFloatInRange(min, max) {
+        return min + (Math.random() * (max - min));
+    }
+
+    getRandomIntInRange(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    mutateWeightPerturb() {
+        if (this.connectionGenes.length < 1) {
+            return;
+        }
+
+        var index = getRandomIntInRange(0, this.connectionGenes.length-1);
+        var weight = this.connectionGenes[index].weight;
+        
+        if (Math.random() < gPerturbChance) {
+            this.connectionGenes[index].weight = weight + Math.random()*gMutationRateStep*2 - gMutationRateStep;
+        } else {
+            this.connectionGenes[index].weight = this.getRandomFloatInRange(-2, 2);
+        }
+    }
+
+    mutateConnectionGene() {
+        if (this.nodeGenes.length < 0) {
+            return;
+        }
+        var outputNodeIndex = this.getRandomIntInRange(this.numInputs, this.nodeGenes.length - 1);
+        var inputNodeIndex = this.getRandomIntInRange(0, this.nodeGenes.length - 1);
+
+        if (this.nodeGenes.length > 1) {
+            while (outputNodeIndex == inputNodeIndex) {
+                inputNodeIndex = this.getRandomIntInRange(0, this.nodeGenes.length - 1);
+            }
+        }
+        
+        var inputNode = this.nodeGenes[inputNodeIndex];
+        var outputNode = this.nodeGenes[outputNodeIndex];
+        var connectionGene = ConnectionGene.exists(this.connectionGenes, inputNode, outputNode);
+
+        if (connectionGene) {
+            connectionGene.isEnabled = true;
+        } else {
+            var weight = this.getRandomFloatInRange(-2, 2);
+
+            this.connectionGenes.push(new ConnectionGene(inputNodeIndex, outputNodeIndex, weight, true, this.currentInnovation));
+            this.currentInnovation += 1;
+            outputNode.connectionInputsIndexes.push(this.currentConnectionId);
+            this.currentConnectionId += 1;
+        }
+    }
+
+    mutateNodeGene() {
+        if (this.connectionGenes.length < 0) {
+            return;
+        }
+
+        var connectionGene = this.connectionGenes[this.getRandomIntInRange(0, this.connectionGenes.length - 1)];
+        connectionGene.isEnabled = false;
+
+        var nodeGene = new NodeGene(gNodeType.HIDDEN, this.currentNodeId);
+        this.currentNodeId += 1;
+
+        var newConnection1 = new ConnectionGene(connectionGene.inNode, nodeGene.id, 1, true, this.currentInnovation);
+        this.currentInnovation += 1;
+        this.connectionGenes.push(newConnection1);
+        nodeGene.connectionInputsIndexes.push(this.currentConnectionId);
+        this.currentConnectionId += 1;
+
+        var newConnection2 = new ConnectionGene(nodeGene.id, connectionGene.outNode, connectionGene.weight, true, this.currentInnovation);
+        this.currentInnovation += 1;
+        this.connectionGenes.push(newConnection2);
+        this.nodeGenes[connectionGene.outNode].connectionInputsIndexes.push(this.currentConnectionId);
+        this.currentConnectionId += 1;
+    }
+    
+    mutateConnectionEnableDisable(isSetEnabled) {
+        var possibleGenesToMutate = [];
+        var i = 0;
+        for (i = 0; i < this.connectionGenes.length; i++) {
+            if (this.connectionGenes[i].isEnabled == !isSetEnabled) {
+                possibleGenesToMutate.push(i);
+            }
+        }
+
+        if (possibleGenesToMutate.length == 0) {
+            return;
+        }
+
+        var connectionGene = this.connectionGenes[possibleGenesToMutate[this.getRandomIntInRange(0, possibleGenesToMutate.length-1)]];
+        connectionGene.isEnabled = !connectionGene.isEnabled;
+    }
+
+    mutate() {
+        if (Math.random() < gConnectionMutationRate) {
+            this.mutateWeightPerturb();
+        }
+        
+        if (Math.random() < gLinkMutationRate) {
+            this.mutateConnectionGene();
+        }
+
+        if (Math.random() < gMutationRateBias) {
+            this.mutateConnectionGene();
+        }
+
+        //if (Math.random() < gNodeMutationRate) {
+        //    this.mutateNodeGene();
+        //}
+
+        if (Math.random() < gEnableMutationRate) {
+            this.mutateConnectionEnableDisable(true);
+        }
+        
+        if (Math.random() < gDisableMutationRate) {
+            this.mutateConnectionEnableDisable(false);
+        }
+    }
+
+    sigmoid(x) {
+        return (2/(1 + Math.pow(Math.E, -1*x))) - 1;
+    }
+    
+    evaluateNeuralNetwork(currentInputs) {
+        var i = 0;
+        for (i = 0; i < this.nodeGenes.length; i++) {
+            this.nodeGenes[i].isEvaluated = false;
+        }
+    
+        i = 0;
+        for (i = 0; i < this.numInputs; i++) {
+            this.nodeGenes[i].value = currentInputs[i];
+            this.nodeGenes[i].isEvaluated = true;
+        }
+
+        var j = 0;
+        var sum = 0;
+        var isFinishedEvaluation = false;
+        while (!isFinishedEvaluation) {
+            isFinishedEvaluation = true;
+            for (i = 0; i < this.nodeGenes.length; i++) {
+                var currentNode = this.nodeGenes[i];
+                if (!currentNode.isEvaluated) {
+                    sum = 0;
+                    var isAllEvaluated = true;
+                    for (j = 0; j < currentNode.connectionInputsIndexes.length; j++) {
+                        var currentConnection = this.connectionGenes[currentNode.connectionInputsIndexes[j]];
+                        if (!currentConnection.isEnabled) {
+                            continue;
+                        }
+                        //console.log(currentConnection.inNode);
+                        //console.log(currentConnection);
+                        //console.log(this.nodeGenes.length);
+                        //console.log(this.connectionGenes);
+                        //console.log(this.nodeGenes);
+                        var inputNode = this.nodeGenes[currentConnection.inNode];
+                        if (inputNode.isEvaluated) {
+                            sum = sum + currentConnection.weight * inputNode.value;
+                        } else {
+                            isAllEvaluated = false;
+                            break;
+                        }
+                    }
+
+                    if (isAllEvaluated) {
+                        if (currentNode.connectionInputsIndexes.length > 0) {
+                            currentNode.value = this.sigmoid(sum)
+                        }
+                    } else {
+                        //isFinishedEvaluation = false;
+                    }
+                }
+            }
+        }
+        
+        var outputs = [];
+        for (i = 0; i < this.numOutputs; i++) {
+            outputs.push(this.nodeGenes[this.numInputs + i].value);
+        }
+        return outputs;
+    }
+}
+
+class ConnectionGene {
+    constructor(inNode, outNode, weight, isEnabled, innovation) {
+        this.inNode = inNode;
+        this.outNode = outNode;
+        this.weight = weight;
+        this.isEnabled = isEnabled;
+        this.innovation = innovation;
+    }
+
+    static exists(connectionsGenes, inputNode, outputNode) {
+        var i = 0;
+        for (i = 0; i < connectionsGenes.length; i++) {
+            if (connectionsGenes[i].inNode == inputNode.id && connectionsGenes[i].outNode == outputNode.id ||
+                connectionsGenes[i].inNode == outputNode.id && connectionsGenes[i].outNode == inputNode.id) {
+                return connectionsGenes[i];
+            }
+        }
+
+        return false;
+    }
+}
+
+var gNodeType = {INPUT: 0, HIDDEN: 1, OUTPUT: 2};
+class NodeGene {
+    constructor(type, id) {
+        this.type = type;
+        this.id = id;
+        this.value = 0;
+        this.connectionInputsIndexes = [];
+        this.isEvaluated = false;
+    }
+}
+
+function initalizeBox2D() {
+    box2d = {
+        b2Vec2            : Box2D.Common.Math.b2Vec2,
+        b2BodyDef         : Box2D.Dynamics.b2BodyDef,
+        b2Body            : Box2D.Dynamics.b2Body,
+        b2FixtureDef      : Box2D.Dynamics.b2FixtureDef,
+        b2Fixture         : Box2D.Dynamics.b2Fixture,
+        b2World           : Box2D.Dynamics.b2World,
+        b2MassData        : Box2D.Collision.Shapes.b2MassData,
+        b2PolygonShape    : Box2D.Collision.Shapes.b2PolygonShape,
+        b2CircleShape     : Box2D.Collision.Shapes.b2CircleShape,
+        b2DebugDraw       : Box2D.Dynamics.b2DebugDraw,
+        b2ContactListener : Box2D.Dynamics.b2ContactListener,
+    };
+}
+
+function initalizeCSS() {
+
+    var cssData = `* { margin:0; padding:0; }
+                     html, body { width:100%; height:100%; }
+                     canvas { display:block; }`;
+
+    var css = document.createElement("style");
+    css.type = "text/css";
+    css.innerHTML = cssData;
+
+    document.body.appendChild(css);
+}
+
+function resetWorld() {
+    var currentBody;
+
+    //remove all bullets and enemies
+    gDestroyedObjects = [];
+    for (currentBody = gWorld.GetBodyList(); currentBody != null; currentBody = currentBody.GetNext()) {
+        if (currentBody.GetUserData() == gObjectTypes.BULLET || currentBody.GetUserData() == gObjectTypes.ENEMY) {
+                gDestroyedObjects.push(currentBody);
+        }
+    }
+    removeDestroyedObjects();
+
+    //reset the circle position and velocity
+
+    gIsShootingOnCooldown = false;
+    gTimeBetweenShooting = 0;
+    gTimeNotUpdated = 0;
+    gTimeBetweenEnemyDrops = 0;
+    gLastDeltaTime = Date.now();
+
+    gCircle.SetLinearVelocity(new box2d.b2Vec2(0, 0));
+    gCircle.SetPosition(new box2d.b2Vec2(gCanvas.width / 2 / gBox2DScale, (gCanvas.height - (gWallsThickness + 30)) / gBox2DScale));
+
+    resetRaycastArrays();
+}
+
+function drawRaycasts() {
+    var centerX = gCircle.GetWorldCenter().x * gBox2DScale;
+    var centerY = gCircle.GetWorldCenter().y * gBox2DScale;
+    var currentX = 0;
+    var currentY = 0;
+    
+    var ctx = gCanvas.getContext('2d');
+    ctx.strokeStyle = 'rgba(255, 164, 0, 0.2';
+    var i = 0;
+    for (i = 0; i < gNumberOfRays; i++) {
+        currentX = gCurrentRaycatedPoints[i].x * gBox2DScale;
+        currentY = gCurrentRaycatedPoints[i].y * gBox2DScale;
+
+        //don't draw if values are not initalized
+        if (currentX != 0 && currentY != 0) {
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(currentX, currentY);
+            ctx.stroke();
+        }
+    }
+}
+
+function resetRaycastArrays() {
+    gCurrentRaycatedPoints = new Array(gNumberOfRays);
+    gCurrentRaycastFractions = new Array(gNumberOfRays);
+
+    var i = 0;
+    for (i = 0; i < gNumberOfRays; i++) {
+        gCurrentRaycatedPoints[i] = new box2d.b2Vec2(0, 0);
+        gCurrentRaycastFractions[i] = gRayLength;
+    }
+}
+
+function raycastCallback(fixture, point, normal, fraction) {
+    if (fixture.GetUserData() == gObjectTypes.ENEMY) {
+
+        gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
+        gCurrentRaycastFractions[gCurrentRaycastIndex] = fraction;
+        
+        //returning fraction so it will stop this ray from hitting further 
+        return fraction;
+    }
+}
+
+function getRaycastData() {
+    var circleCenter = gCircle.GetWorldCenter();
+    var rayTraceLength = gRayLength / gBox2DScale;
+    var firstPoint = new box2d.b2Vec2(circleCenter.x + rayTraceLength, circleCenter.y);
+    var firstPointCentered = new box2d.b2Vec2(rayTraceLength, 0);
+    var currentPoint = firstPoint;
+    var angle = (360 / gNumberOfRays)*(Math.PI / 180);
+    var currentAngle = 0;
+
+    var i = 0;
+    for (i = 0; i < gNumberOfRays; i++) {
+        gCurrentRaycastIndex = i;
+        gCurrentRaycatedPoints[gCurrentRaycastIndex].x = currentPoint.x;
+        gCurrentRaycatedPoints[gCurrentRaycastIndex].y = currentPoint.y;
+        gWorld.RayCast(raycastCallback, gCircle.GetWorldCenter(), currentPoint);
+
+        currentAngle += angle;
+        currentPoint.x = firstPointCentered.x*Math.cos(currentAngle) - firstPointCentered.y*Math.sin(currentAngle);
+        currentPoint.y = firstPointCentered.y*Math.cos(currentAngle) + firstPointCentered.x*Math.sin(currentAngle);
+        currentPoint.x += circleCenter.x;
+        currentPoint.y += circleCenter.y;
+    }
+
+}
+
+function tick() {
+    var currentTime = Date.now();
+    var deltaTime = (currentTime - gLastDeltaTime) / 1000;
+
+    gLastDeltaTime = currentTime;
+    gTimeNotUpdated += deltaTime;
+    gTimeBetweenEnemyDrops += deltaTime;
+
+    if (gIsShootingOnCooldown) {
+        gTimeBetweenShooting += deltaTime;
+        if (gTimeBetweenShooting > gShootingCooldown) {
+            gTimeBetweenShooting = 0;
+            gIsShootingOnCooldown = false;
+        }
+    }
+
+    while (gTimeNotUpdated >= gWorldStepRate) {
+        gWorld.Step(gWorldStepRate, gWorldVelocityIterations, gWorldPositionIterations);
+
+        if (!gIsCircleMovingRight && !gIsCircleMovingLeft) {
+            velocity = gCircle.GetLinearVelocity();
+            velocity.x = 0;
+            gCircle.SetLinearVelocity(velocity);
+        }
+
+        removeBodiesOutsideOfBounds();
+        removeDestroyedObjects();
+        if (gTimeBetweenEnemyDrops > gEnemiesDropInterval) {
+            gTimeBetweenEnemyDrops -= gEnemiesDropInterval;
+            dropEnemy();
+        }
+        getRaycastData();
+        //neat nn magic irght here 
+        var outputs = gCurrentNetwork.evaluateNeuralNetwork(gCurrentRaycastFractions);
+
+        networkOutputsToKeys(outputs);
+        handleClickedKeys();
+        gTimeNotUpdated -= gWorldStepRate;
+
+        if (gIsResetWorld) {
+            gIsResetWorld = false;
+            console.log(gCurrentScore);
+            gCurrentScore = 0;
+            resetWorld();
+            gCurrentNetwork.mutate();
+            break;
+        }
+
+        gCurrentScore += gWorldStepRate;
+    }
+
+    //gWorld.ClearForces();
+
+    gWorld.DrawDebugData();
+    drawRaycasts();
+    window.requestAnimationFrame(tick);
+}
+
+function networkOutputsToKeys(outputs) {
+    var i = 0;
+    for (i = 0; i < outputs.length; i++) {
+        if (outputs[i] > 0) {
+            gClickedKeysOutput[i] = 1;
+        } else {
+            gClickedKeysOutput[i] = 0;
+        }
+    }
+
+    gCurrentlyClickedKeys["rightClick"] = gClickedKeysOutput[0];
+    gCurrentlyClickedKeys["leftClick"] = gClickedKeysOutput[1];
+    gCurrentlyClickedKeys["upClick"] = gClickedKeysOutput[2];
+    gCurrentlyClickedKeys["shootRight"] = gClickedKeysOutput[3];
+    gCurrentlyClickedKeys["shootLeft"] = gClickedKeysOutput[4];
+    gCurrentlyClickedKeys["shootUp"] = gClickedKeysOutput[5];
+    gCurrentlyClickedKeys["shootDown"] = gClickedKeysOutput[6];
+}
+
+function clearCanvas() {
+    var ctx = gCanvas.getContext("2d");
+
+    ctx.fillStyle = "rgba(0, 0, 0, 1.0)";
+    ctx.fillRect(0, 0, gCanvas.width, gCanvas.height);
+}
+
+function initalizeCanvas() {
+    gCanvas.width = window.innerWidth;
+    gCanvas.height = window.innerHeight;
+}
+
+function createPolygon(positionX, positionY, width, height, isDynamic, objectType) {
+    var polyFixDef = new box2d.b2FixtureDef;
+    polyFixDef.density = 1.0;
+    polyFixDef.friction = 0.5;
+    polyFixDef.restitution = 0.0;
+    polyFixDef.userData = objectType;
+
+    var polyBodyDef = new box2d.b2BodyDef;
+    if (isDynamic) {
+        polyBodyDef.type = box2d.b2Body.b2_dynamicBody;
+    } else {
+        polyBodyDef.type = box2d.b2Body.b2_staticBody;
+    }
+
+    polyBodyDef.position.x = positionX;
+    polyBodyDef.position.y = positionY;
+    polyBodyDef.userData = objectType;
+    polyFixDef.shape = new box2d.b2PolygonShape;
+    polyFixDef.shape.SetAsBox(width, height);
+
+    var polyBody = gWorld.CreateBody(polyBodyDef);
+    polyBody.CreateFixture(polyFixDef);
+
+    return polyBody;
+}
+
+function removeBodiesOutsideOfBounds() {
+    var currentBody;
+    var bulletMaxLimit = Math.max(gBulletLength, gBulletThickness);
+    var leftmostBoundary = 0 - bulletMaxLimit / gBox2DScale;
+    var rightmostBoundary = (gCanvas.width + bulletMaxLimit) / gBox2DScale;
+    var upmostBoundary = 0 - bulletMaxLimit / gBox2DScale;
+    var downmostBoundary = (gCanvas.height + bulletMaxLimit) / gBox2DScale;
+
+    for (currentBody = gWorld.GetBodyList(); currentBody != null; currentBody = currentBody.GetNext()) {
+        if (currentBody.GetUserData() == gObjectTypes.BULLET) {
+            var position = currentBody.GetWorldCenter();
+            if (position.x < leftmostBoundary || position.x > rightmostBoundary ||
+                position.y < upmostBoundary || position.y > downmostBoundary) {
+                gDestroyedObjects.push(currentBody);
+            }
+        }
+    }
+}
+
+function shootBullet(direction) {
+    if (!gIsShootingOnCooldown) {
+        gIsShootingOnCooldown = true;
+        createBullet(direction);
+    }
+}
+
+function createBullet(direction) {
+    var polyFixDef = new box2d.b2FixtureDef;
+    polyFixDef.density = 1.0;
+    polyFixDef.friction = 0.5;
+    polyFixDef.restitution = 0.0;
+    polyFixDef.userData = gObjectTypes.BULLET;
+
+    var polyBodyDef = new box2d.b2BodyDef;
+    polyBodyDef.type = box2d.b2Body.b2_kinematicBody;
+    //polyBodyDef.type = box2d.b2Body.b2_dynamicBody;
+    polyBodyDef.bullet = true;
+    polyBodyDef.userData = gObjectTypes.BULLET;
+    
+    //determine the bullet speed direction
+    var normalizedVelocity = gBulletVelocity / gBox2DScale;
+    if (direction == gBulletDirection.RIGHT) {
+        polyBodyDef.linearVelocity = new box2d.b2Vec2(normalizedVelocity, 0);
+    }
+    if (direction == gBulletDirection.LEFT) {
+        polyBodyDef.linearVelocity = new box2d.b2Vec2(-1 * normalizedVelocity, 0);
+    }
+    if (direction == gBulletDirection.UP) {
+        polyBodyDef.linearVelocity = new box2d.b2Vec2(0, -1 * normalizedVelocity);
+    }
+    if (direction == gBulletDirection.DOWN) {
+        polyBodyDef.linearVelocity = new box2d.b2Vec2(0, normalizedVelocity);
+    }
+
+    polyBodyDef.position.x = gCircle.GetWorldCenter().x;
+    polyBodyDef.position.y = gCircle.GetWorldCenter().y;
+    polyFixDef.shape = new box2d.b2PolygonShape;
+    polyFixDef.isSensor = true;
+
+    var normalizedThickness = gBulletThickness / gBox2DScale;
+    var normalizedLength = gBulletLength / gBox2DScale;
+    if (direction == gBulletDirection.RIGHT || direction == gBulletDirection.LEFT) {
+        polyFixDef.shape.SetAsBox(normalizedLength, normalizedThickness);
+    }
+
+    if (direction == gBulletDirection.UP || direction == gBulletDirection.DOWN) {
+        polyFixDef.shape.SetAsBox(normalizedThickness, normalizedLength);
+    }
+
+    var polyBody = gWorld.CreateBody(polyBodyDef);
+    polyBody.CreateFixture(polyFixDef);
+
+    return polyBody;
+}
+
+function createCircle(positionX, positionY, radius) {
+    var circleFixDef = new box2d.b2FixtureDef;
+    circleFixDef.density = 1.0;
+    circleFixDef.friction = 0.0;
+    circleFixDef.restitution = 0.0;
+    circleFixDef.userData = gObjectTypes.CIRCLE;
+
+    var circleBodyDef = new box2d.b2BodyDef;
+    circleBodyDef.type = box2d.b2Body.b2_dynamicBody;
+    circleBodyDef.position.x = positionX;
+    circleBodyDef.position.y = positionY;
+    circleBodyDef.userData = gObjectTypes.CIRCLE;
+    circleFixDef.shape = new box2d.b2CircleShape(radius);
+
+    var circleBody = gWorld.CreateBody(circleBodyDef);
+    circleBody.CreateFixture(circleFixDef);
+    circleBody.SetSleepingAllowed(false);
+    circleBody.SetFixedRotation(true);
+
+    return circleBody;
+}
+
+function createWorldWalls() {
+    //create the walls
+    //bottom
+    var polyPositionX = gCanvas.width / 2 / gBox2DScale;
+    var polyPositionY = gCanvas.height / gBox2DScale;
+    var polyWidth = gCanvas.width / 2 / gBox2DScale;
+    var polyHeight = gWallsThickness / 2 / gBox2DScale;
+    createPolygon(polyPositionX, polyPositionY, polyWidth, polyHeight, false, gObjectTypes.GROUND);
+
+    //top
+    polyPositionX = gCanvas.width / 2 / gBox2DScale;
+    polyPositionY = 0;
+    polyWidth = gCanvas.width / 2 / gBox2DScale;
+    polyHeight = gWallsThickness / 2 / gBox2DScale;
+    createPolygon(polyPositionX, polyPositionY, polyWidth, polyHeight, false, gObjectTypes.WALL);
+
+    //right 
+    polyPositionX = gCanvas.width / gBox2DScale;
+    polyPositionY = gCanvas.height / 2 / gBox2DScale;
+    polyWidth = gWallsThickness / 2 / gBox2DScale; 
+    polyHeight = gCanvas.height/ 2 / gBox2DScale;
+    createPolygon(polyPositionX, polyPositionY, polyWidth, polyHeight, false, gObjectTypes.WALL);
+
+    //left
+    polyPositionX = 0;
+    polyPositionY = gCanvas.height / 2 / gBox2DScale;
+    polyWidth = gWallsThickness / 2 / gBox2DScale; 
+    polyHeight = gCanvas.height/ 2 / gBox2DScale;
+    createPolygon(polyPositionX, polyPositionY, polyWidth, polyHeight, false, gObjectTypes.WALL);
+}
+
+function initalizeWorld() {
+    gWorld = new box2d.b2World(new box2d.b2Vec2(gGravityX, gGravityY), true);
+
+    createWorldWalls();
+
+    //initalize the circle
+    gCircle = createCircle(gCanvas.width / 2 / gBox2DScale, (gCanvas.height - (gWallsThickness + 30)) / gBox2DScale, gCircleRadius);
+
+    //initialize debug draw
+    var debugDraw = new box2d.b2DebugDraw();
+    var canvasContext = gCanvas.getContext("2d");
+    
+    debugDraw.SetSprite(canvasContext);
+    debugDraw.SetDrawScale(gBox2DScale);
+    debugDraw.SetFillAlpha(0.3);
+    debugDraw.SetLineThickness(1.0);
+    debugDraw.SetFlags(box2d.b2DebugDraw.e_shapeBit | box2d.b2DebugDraw.e_jointBit);
+
+    gWorld.SetDebugDraw(debugDraw);
+
+    //assign the contact listener (for collision detection)
+    var contactListener = new box2d.b2ContactListener;
+    contactListener.BeginContact = onContact;
+    gWorld.SetContactListener(contactListener);
+}
+
+//collision handler
+function onContact(contact) {
+    fixtureA = contact.GetFixtureA();
+    fixtureB = contact.GetFixtureB();
+    objectTypeA = fixtureA.GetUserData();
+    objectTypeB = fixtureB.GetUserData();
+    if (objectTypeA == gObjectTypes.GROUND && objectTypeB == gObjectTypes.CIRCLE ||
+        objectTypeA == gObjectTypes.CIRCLE && objectTypeB == gObjectTypes.GROUND) {
+        gIsCanJump = true;
+    }
+
+    if (objectTypeA == gObjectTypes.ENEMY && objectTypeB == gObjectTypes.CIRCLE ||
+        objectTypeA == gObjectTypes.CIRCLE && objectTypeB == gObjectTypes.ENEMY) {
+        gIsResetWorld = true;
+    }
+
+    if (objectTypeA == gObjectTypes.BULLET && objectTypeB == gObjectTypes.WALL ||
+        objectTypeA == gObjectTypes.WALL && objectTypeB == gObjectTypes.BULLET) {
+        if (objectTypeA == gObjectTypes.BULLET) {
+            gDestroyedObjects.push(fixtureA.GetBody());
+        } else {
+            gDestroyedObjects.push(fixtureB.GetBody());
+        }
+    }
+
+    if (objectTypeA == gObjectTypes.BULLET && objectTypeB == gObjectTypes.GROUND ||
+        objectTypeA == gObjectTypes.GROUND && objectTypeB == gObjectTypes.BULLET) {
+        if (objectTypeA == gObjectTypes.BULLET) {
+            gDestroyedObjects.push(fixtureA.GetBody());
+        } else {
+            gDestroyedObjects.push(fixtureB.GetBody());
+        }
+    }
+
+    if (objectTypeA == gObjectTypes.BULLET && objectTypeB == gObjectTypes.ENEMY||
+        objectTypeA == gObjectTypes.ENEMY && objectTypeB == gObjectTypes.BULLET) {
+        gCurrentScore += gScorePerKill;
+        gDestroyedObjects.push(fixtureA.GetBody());
+        gDestroyedObjects.push(fixtureB.GetBody());
+    }
+}
+
+
+function initalizeKeyHandlers() {
+    document.onkeydown = handleKeyDown;
+    document.onkeyup = handleKeyUp;
+}
+
+function handleClickedKeys() {
+    if (gCurrentlyClickedKeys["leftClick"] && gCurrentlyClickedKeys["rightClick"]) {
+        gIsCircleMovingLeft = false;
+        gIsCircleMovingRight = false;
+    } else {
+        if (gCurrentlyClickedKeys["rightClick"]) { 
+            gIsCircleMovingRight = true;
+            gIsCircleMovingLeft = false;
+            moveRight();
+        } else {
+            gIsCircleMovingRight = false;
+        }
+    }
+
+    if (gCurrentlyClickedKeys["leftClick"]) { 
+        gIsCircleMovingLeft = true;
+        gIsCircleMovingRight = false;
+        moveLeft();
+    } else {
+        gIsCircleMovingLeft = false;
+    }
+    
+    if (gCurrentlyClickedKeys["upClick"]) {
+        jump();
+    }
+
+    if (gCurrentlyClickedKeys["shootRight"]) {
+        shootBullet(gBulletDirection.RIGHT);
+    }
+
+    if (gCurrentlyClickedKeys["shootLeft"]) {
+        shootBullet(gBulletDirection.LEFT);
+    }
+
+    if (gCurrentlyClickedKeys["shootUp"]) {
+        shootBullet(gBulletDirection.UP);
+    }
+
+    if (gCurrentlyClickedKeys["shootDown"]) {
+        shootBullet(gBulletDirection.DOWN);
+    }
+}
+
+function handleKeyDown(event) {
+    var keyCode = event.keyCode;
+    var upKeyCode = 38;
+    var leftKeyCode = 37;
+    var rightKeyCode = 39;
+    var downKeyCode = 40;
+    var enterKeyCode = 13;
+    var qKeyCode = 81;
+    var eKeyCode = 69;
+    var zKeyCode = 90;
+    var xKeyCode = 88;
+    var cKeyCode = 67;
+    var vKeyCode = 86;
+
+    if (keyCode == leftKeyCode) {
+        gCurrentlyClickedKeys["leftClick"] = true;
+    } 
+
+    if (keyCode == rightKeyCode) {
+        gCurrentlyClickedKeys["rightClick"] = true;
+    }
+
+    if (keyCode == upKeyCode) {
+        gCurrentlyClickedKeys["upClick"] = true;
+    } 
+    if (keyCode == downKeyCode) {
+    } 
+    if (keyCode == qKeyCode) {
+    } 
+    if (keyCode == eKeyCode) {
+    } 
+    if (keyCode == enterKeyCode) {
+    }
+
+    if (keyCode == zKeyCode) {
+        gCurrentlyClickedKeys["shootRight"] = true;
+    } 
+
+    if (keyCode == xKeyCode) {
+        gCurrentlyClickedKeys["shootLeft"] = true;
+    } 
+
+    if (keyCode == cKeyCode) {
+        gCurrentlyClickedKeys["shootUp"] = true;
+    } 
+
+    if (keyCode == vKeyCode) {
+        gCurrentlyClickedKeys["shootDown"] = true;
+    } 
+}
+
+function handleKeyUp(event) {
+    var keyCode = event.keyCode;
+    var upKeyCode = 38;
+    var leftKeyCode = 37;
+    var rightKeyCode = 39;
+    var zKeyCode = 90;
+    var xKeyCode = 88;
+    var cKeyCode = 67;
+    var vKeyCode = 86;
+
+    if (keyCode == leftKeyCode) {
+        gCurrentlyClickedKeys["leftClick"] = false;
+    } 
+
+    if (keyCode == rightKeyCode) {
+        gCurrentlyClickedKeys["rightClick"] = false;
+    }
+
+    if (keyCode == upKeyCode) {
+        gCurrentlyClickedKeys["upClick"] = false;
+    } 
+
+    if (keyCode == zKeyCode) {
+        gCurrentlyClickedKeys["shootRight"] = false;
+    } 
+
+    if (keyCode == xKeyCode) {
+        gCurrentlyClickedKeys["shootLeft"] = false;
+    } 
+
+    if (keyCode == cKeyCode) {
+        gCurrentlyClickedKeys["shootUp"] = false;
+    } 
+
+    if (keyCode == vKeyCode) {
+        gCurrentlyClickedKeys["shootDown"] = false;
+    } 
+}
+
+//circle movement 
+function moveRight() {
+    //gCircle.ApplyForce(new box2d.b2Vec2(gMovingVelocity, 0), gCircle.GetWorldCenter());
+    velocity = gCircle.GetLinearVelocity();
+    velocity.x = gMovingVelocity;
+    gCircle.SetLinearVelocity(velocity);
+}
+
+function moveLeft() {
+    velocity = gCircle.GetLinearVelocity();
+    velocity.x = -1 * gMovingVelocity;
+    gCircle.SetLinearVelocity(velocity);
+}
+
+function jump() {
+    if (gIsCanJump) {
+        gIsCanJump = false;
+        gCircle.ApplyImpulse(new box2d.b2Vec2(0, gJumpingPulse), gCircle.GetWorldCenter());
+    }
+}
+
+function shootRight() {
+    var positionX = gCircle.GetWorldCenter().x;
+    var positionY = gCircle.GetWorldCenter().y;
+
+    var bullet = createPolygon(positionX, positionY, 20 / gBox2DScale, 20 / gBox2DScale, true, gObjectTypes.ENEMY);
+
+}
+
+function dropEnemy() {
+    var polyWidth = getRandomIntInRange(gMinEnemyWidth, gMaxEnemyWidth);
+    var polyHeight = getRandomIntInRange(gMinEnemyHeight, gMaxEnemyHeight);
+
+    var rightmostPosition = (gCanvas.width - ((gWallsThickness + polyWidth)/2)) / gBox2DScale; 
+    var leftmostPosition = (((gWallsThickness + polyWidth)/2)) / gBox2DScale; 
+    var polyPositionX = getRandomIntInRange(leftmostPosition, rightmostPosition);
+    var polyPositionY = (gWallsThickness + polyHeight) / 2 / gBox2DScale;
+
+    polyWidth = polyWidth / 2 / gBox2DScale;
+    polyHeight = polyHeight / 2 / gBox2DScale;
+
+    var enemy = createPolygon(polyPositionX, polyPositionY, polyWidth, polyHeight, true, gObjectTypes.ENEMY);
+
+    //setTimeout(dropEnemy, gEnemiesDropInterval);
+}
+
+function removeDestroyedObjects() {
+    var i = 0;
+    for (i = 0; i < gDestroyedObjects.length; i++) {
+        gWorld.DestroyBody(gDestroyedObjects[i]);
+    }
+    gDestroyedObjects = [];
+}
+
+//////////////PSEUDO RANDOM GENERATOR///////////////////////
+var m_w = 123456789;
+var m_z = 987654321;
+var mask = 0xffffffff;
+
+function setRandomSeed(seed) {
+    m_w = seed;
+    m_z = 987654321;
+}
+
+// Returns a number between 0 and 1.0
+function getRandomNumFromSeed() {
+    m_z = (36969 * (m_z & 65535) + (m_z >> 16)) & mask;
+    m_w = (18000 * (m_w & 65535) + (m_w >> 16)) & mask;
+    var result = ((m_z << 16) + m_w) & mask;
+    result /= 4294967296;
+
+    return result + 0.5;
+}
+
+function getRandomIntInRange(min, max) {
+    return Math.floor(min + (getRandomNumFromSeed() * (max - min + 1)))
+}
+
+function getRandomFloatInRange(min, max) {
+    return min + (getRandomNumFromSeed() * (max - min))
+}
+////////////////////////////////////////////////////////////
+
+function createGenome(numInputs, numOutputs) {
+    gCurrentNetwork = new Genome(numInputs, numOutputs);
+}
+
+function main() {
+    gCanvas = document.getElementById("canvas");
+    initalizeCSS();
+    initalizeCanvas();
+    initalizeBox2D();
+    initalizeWorld();
+    initalizeKeyHandlers();
+    resetRaycastArrays();
+    
+    createGenome(gNumberOfRays, gClickedKeysOutput.length);
+    //gRandomSeed = parseInt(Math.random()*100000);
+    gRandomSeed = 1337;
+    dropEnemy();
+    gLastDeltaTime = Date.now();
+
+    tick();
+}
+</script>
+
+<body onload="main()">
+<div>
+    <canvas id="canvas" width="500" height="500" style="background-color:#000000;"></canvas>
+</div>
+</body>
+</html>
