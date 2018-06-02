@@ -45,8 +45,8 @@ var gGravityY = 4*9.8;
 var gBulletVelocity = 2000;
 var gBulletThickness = 10;
 var gBulletLength = 30;
-var gShootingCooldown = 0.5;
-var gScorePerKill = 20.0;
+var gShootingCooldown = 0.4;
+var gScorePerKill = 0.0;
 
 var gIsShootingOnCooldown = false;
 var gTimeBetweenShooting = 0;
@@ -59,6 +59,7 @@ var gNumberOfRays = 100;
 var gCurrentRaycatedPoints = [];
 var gCurrentRaycastFractions = [];
 var gRayLength = 1000;
+var gSpeciesPerCrossover = 10;
 
 //enemies size
 var gMinEnemyWidth = 50;
@@ -79,17 +80,25 @@ var gMutationRateBias = 0.9;
 var gNodeMutationRate = 0.9;
 var gEnableMutationRate = 0.9;
 var gDisableMutationRate = 0.9;
+var gCurrentParentNetwork;
 var gCurrentNetwork;
+var gAllSpecies = [];
+
 class Genome {
-    constructor(numInputs, numOutputs) {
+    constructor() {
         this.connectionGenes = [];
         this.nodeGenes = [];
-        this.numInputs = numInputs;
-        this.numOutputs = numOutputs;
+        this.numInputs = 0;
+        this.numOutputs = 0;
         this.currentNodeId = 0;
         this.currentConnectionId = 0;
         this.fitness = 0;
         this.currentInnovation = 0;
+    }
+
+    initialize(numInputs, numOutputs) {
+        this.numInputs = numInputs;
+        this.numOutputs = numOutputs;
 
         var i = 0;
         for (i = 0; i < this.numInputs; i++) {
@@ -103,7 +112,6 @@ class Genome {
             this.currentNodeId += 1;
         }
     }
-
 
     getRandomFloatInRange(min, max) {
         return min + (Math.random() * (max - min));
@@ -166,6 +174,7 @@ class Genome {
         connectionGene.isEnabled = false;
 
         var nodeGene = new NodeGene(gNodeType.HIDDEN, this.currentNodeId);
+        this.nodeGenes.push(nodeGene);
         this.currentNodeId += 1;
 
         var newConnection1 = new ConnectionGene(connectionGene.inNode, nodeGene.id, 1, true, this.currentInnovation);
@@ -211,9 +220,9 @@ class Genome {
             this.mutateConnectionGene();
         }
 
-        //if (Math.random() < gNodeMutationRate) {
-        //    this.mutateNodeGene();
-        //}
+        if (Math.random() < gNodeMutationRate) {
+            this.mutateNodeGene();
+        }
 
         if (Math.random() < gEnableMutationRate) {
             this.mutateConnectionEnableDisable(true);
@@ -286,6 +295,29 @@ class Genome {
         }
         return outputs;
     }
+
+    copy() {
+        var newGenome = new Genome();
+
+        var i = 0;
+        for (i = 0; i < this.connectionGenes.length; i++) {
+            newGenome.connectionGenes.push(this.connectionGenes[i].copy());
+        }
+
+        i = 0;
+        for (i = 0; i < this.nodeGenes.length; i++) {
+            newGenome.nodeGenes.push(this.nodeGenes[i].copy());
+        }
+
+        newGenome.numInputs = this.numInputs;
+        newGenome.numOutputs = this.numOutputs;
+        newGenome.currentNodeId = this.currentNodeId;
+        newGenome.currentConnectionId = this.currentConnectionId;
+        newGenome.fitness = this.fitness;
+        newGenome.currentInnovation = this.currentInnovation;
+    
+        return newGenome;
+    }
 }
 
 class ConnectionGene {
@@ -308,6 +340,18 @@ class ConnectionGene {
 
         return false;
     }
+
+    copy() {
+        var newConnectionGene = new ConnectionGene(0, 0, 0, false, 0);
+
+        newConnectionGene.inNode = this.inNode;
+        newConnectionGene.outNode = this.outNode;
+        newConnectionGene.weight= this.weight;
+        newConnectionGene.isEnabled= this.isEnabled;
+        newConnectionGene.innovation = this.innovation;
+
+        return newConnectionGene;
+    }
 }
 
 var gNodeType = {INPUT: 0, HIDDEN: 1, OUTPUT: 2};
@@ -318,6 +362,21 @@ class NodeGene {
         this.value = 0;
         this.connectionInputsIndexes = [];
         this.isEvaluated = false;
+    }
+
+    copy() {
+        var newNodeGene = new NodeGene(0, 0);
+        newNodeGene.type = this.type;
+        newNodeGene.id = this.id;
+        newNodeGene.value = this.value;
+        newNodeGene.isEvaluated = this.isEvaluated;
+
+        var i = 0;
+        for (i = 0; i < this.connectionInputsIndexes.length; i++) {
+            newNodeGene.connectionInputsIndexes.push(this.connectionInputsIndexes[i]);
+        }
+
+        return newNodeGene;
     }
 }
 
@@ -383,7 +442,7 @@ function drawRaycasts() {
     var currentY = 0;
     
     var ctx = gCanvas.getContext('2d');
-    ctx.strokeStyle = 'rgba(255, 164, 0, 0.2';
+    ctx.strokeStyle = 'rgba(0, 102, 255, 0.3';
     var i = 0;
     for (i = 0; i < gNumberOfRays; i++) {
         currentX = gCurrentRaycatedPoints[i].x * gBox2DScale;
@@ -414,7 +473,7 @@ function raycastCallback(fixture, point, normal, fraction) {
     if (fixture.GetUserData() == gObjectTypes.ENEMY) {
 
         gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
-        gCurrentRaycastFractions[gCurrentRaycastIndex] = fraction;
+        gCurrentRaycastFractions[gCurrentRaycastIndex] = 1.0 - fraction;
         
         //returning fraction so it will stop this ray from hitting further 
         return fraction;
@@ -488,9 +547,10 @@ function tick() {
         if (gIsResetWorld) {
             gIsResetWorld = false;
             console.log(gCurrentScore);
+            gCurrentNetwork.fitness = gCurrentScore;
             gCurrentScore = 0;
             resetWorld();
-            gCurrentNetwork.mutate();
+            setNextGeneration();
             break;
         }
 
@@ -502,6 +562,40 @@ function tick() {
     gWorld.DrawDebugData();
     drawRaycasts();
     window.requestAnimationFrame(tick);
+}
+
+function setNextGeneration() {
+    gAllSpecies.push(gCurrentNetwork);
+
+    if (gAllSpecies.length % gSpeciesPerCrossover == 0) {
+        gAllSpecies.sort(function(genome1, genome2) {return genome2.fitness - genome1.fitness});
+        //removing all failed species
+        //this hack removes array elements, and is fater thea splice
+        gAllSpecies.length = gSpeciesPerCrossover;
+        var genome1 = gAllSpecies[0];
+        var genome2 = gAllSpecies[1];
+        gCurrentParentNetwork = genome1.copy();
+    
+        console.log("crossover");
+        console.log(genome1.fitness);
+        console.log(genome2.fitness);
+        var i = 0;
+        for (i = 0; i < gCurrentParentNetwork.connectionGenes.length; i++) {
+            if (genome2.connectionGenes.length < i) {
+                break;
+            }
+            
+            if (Math.random > 0.5) {
+                //instead of checking inovation, we retain the same index of the connection genes
+                gCurrentParentNetwork.connectionGenes[i] = genome2.connectionGenes[i].copy;
+            }
+        }
+
+        gCurrentNetwork = gCurrentParentNetwork.copy();
+    } else {
+        gCurrentNetwork = gCurrentParentNetwork.copy();
+        gCurrentNetwork.mutate();
+    }
 }
 
 function networkOutputsToKeys(outputs) {
@@ -980,7 +1074,10 @@ function getRandomFloatInRange(min, max) {
 ////////////////////////////////////////////////////////////
 
 function createGenome(numInputs, numOutputs) {
-    gCurrentNetwork = new Genome(numInputs, numOutputs);
+    gCurrentParentNetwork = new Genome();
+    gCurrentParentNetwork.initialize(numInputs, numOutputs);
+    
+    gCurrentNetwork = gCurrentParentNetwork.copy();
 }
 
 function main() {
