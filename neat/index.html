@@ -7,8 +7,7 @@
         rskedmi@gmail.com
 -->
 <html>
-<!-- <script src="Box2d.min.js"></script> -->
-<script type="text/javascript" src="Box2D.js"></script>
+<script type="text/javascript" src="Box2d.min.js"></script>
 <script>
 var box2d;
 
@@ -59,7 +58,7 @@ var gNumberOfRays = 100;
 var gCurrentRaycatedPoints = [];
 var gCurrentRaycastFractions = [];
 var gRayLength = 1000;
-var gSpeciesPerCrossover = 10;
+var gCrossoverChance = 0.3;
 
 //enemies size
 var gMinEnemyWidth = 50;
@@ -73,16 +72,23 @@ var gCurrentlyClickedKeys = { "rightClick": 0, "leftClick": 0, "upClick": 0, "sh
 var gClickedKeysOutput = [0, 0, 0, 0, 0, 0, 0];
 
 var gMutationRateStep = 0.5;
-var gPerturbChance = 0.9;
-var gLinkMutationRate = 0.9;
-var gConnectionMutationRate = 0.9;
-var gMutationRateBias = 0.9;
-var gNodeMutationRate = 0.9;
-var gEnableMutationRate = 0.9;
-var gDisableMutationRate = 0.9;
+var gPerturbChance = 0.7;
+var gLinkMutationRate = 1.0;
+var gConnectionMutationRate = 0.7;
+var gMutationRateBias = 0.7;
+var gNodeMutationRate = 0.5;
+var gEnableMutationRate = 1.0;
+var gDisableMutationRate = 1.0;
 var gCurrentParentNetwork;
 var gCurrentNetwork;
-var gAllSpecies = [];
+//an array of genome arrays
+var gSpecies = [];
+var gDisjointsDelta = 2.0;
+var gSharedGenesWeightsDelta = 1.0;
+var gDeltaThreshold = 0.4;
+var gMaxSpecies = 10;
+
+var gInnovationNumber = 0;
 
 class Genome {
     constructor() {
@@ -93,7 +99,6 @@ class Genome {
         this.currentNodeId = 0;
         this.currentConnectionId = 0;
         this.fitness = 0;
-        this.currentInnovation = 0;
     }
 
     initialize(numInputs, numOutputs) {
@@ -111,6 +116,25 @@ class Genome {
             this.nodeGenes.push(new NodeGene(gNodeType.OUTPUT, this.currentNodeId));
             this.currentNodeId += 1;
         }
+    
+        //Evolving NN’s through Augmenting Topologies
+        //3.4 "... starting out with a uniform population of networks with zero hidden nodes (i.e., all inputs connect directly to outputs)."
+        //The article specifically says that all the input nodes are connected directly to the output nodes at the start.
+        //This is not exaclty what other people did implementing this algorithm (MarI/O didn't do that, he starts without connections)
+
+        var j = 0;
+        for (i = 0; i < this.numInputs; i++) {
+            for (j = 0; j < this.numOutputs; j++) {
+                var weight = this.getRandomFloatInRange(-2, 2);
+                var outputNodeIndex = numInputs + j;
+                var outputNode = this.nodeGenes[outputNodeIndex];
+
+                this.connectionGenes.push(new ConnectionGene(i, outputNodeIndex, weight, true, gInnovationNumber));
+                gInnovationNumber += 1;
+                outputNode.connectionInputsIndexes.push(this.currentConnectionId);
+                this.currentConnectionId += 1;
+            }
+        }
     }
 
     getRandomFloatInRange(min, max) {
@@ -122,17 +146,18 @@ class Genome {
     }
 
     mutateWeightPerturb() {
-        if (this.connectionGenes.length < 1) {
-            return;
-        }
+        //Evolving NN’s through Augmenting Topologies
+        //3.1 "...Connection weights mutate as in any NE system, with each connection either perturbed or not at each generation"
+        var i = 0;
+        for (i = 0; i < this.connectionGenes.length; i++) {
+            var weight = this.connectionGenes[i].weight;
 
-        var index = getRandomIntInRange(0, this.connectionGenes.length-1);
-        var weight = this.connectionGenes[index].weight;
-        
-        if (Math.random() < gPerturbChance) {
-            this.connectionGenes[index].weight = weight + Math.random()*gMutationRateStep*2 - gMutationRateStep;
-        } else {
-            this.connectionGenes[index].weight = this.getRandomFloatInRange(-2, 2);
+            if (Math.random() < gPerturbChance) {
+                this.connectionGenes[i].weight = weight + Math.random()*gMutationRateStep*2 - gMutationRateStep;
+            } 
+            //else {
+            //    enabledGenes[i].weight = this.getRandomFloatInRange(-2, 2);
+            //}
         }
     }
 
@@ -158,15 +183,15 @@ class Genome {
         } else {
             var weight = this.getRandomFloatInRange(-2, 2);
 
-            this.connectionGenes.push(new ConnectionGene(inputNodeIndex, outputNodeIndex, weight, true, this.currentInnovation));
-            this.currentInnovation += 1;
+            this.connectionGenes.push(new ConnectionGene(inputNodeIndex, outputNodeIndex, weight, true, gInnovationNumber));
+            gInnovationNumber += 1;
             outputNode.connectionInputsIndexes.push(this.currentConnectionId);
             this.currentConnectionId += 1;
         }
     }
 
     mutateNodeGene() {
-        if (this.connectionGenes.length < 0) {
+        if (this.connectionGenes.length < 1) {
             return;
         }
 
@@ -177,14 +202,14 @@ class Genome {
         this.nodeGenes.push(nodeGene);
         this.currentNodeId += 1;
 
-        var newConnection1 = new ConnectionGene(connectionGene.inNode, nodeGene.id, 1, true, this.currentInnovation);
-        this.currentInnovation += 1;
+        var newConnection1 = new ConnectionGene(connectionGene.inNode, nodeGene.id, 1, true, gInnovationNumber);
+        gInnovationNumber += 1;
         this.connectionGenes.push(newConnection1);
         nodeGene.connectionInputsIndexes.push(this.currentConnectionId);
         this.currentConnectionId += 1;
 
-        var newConnection2 = new ConnectionGene(nodeGene.id, connectionGene.outNode, connectionGene.weight, true, this.currentInnovation);
-        this.currentInnovation += 1;
+        var newConnection2 = new ConnectionGene(nodeGene.id, connectionGene.outNode, connectionGene.weight, true, gInnovationNumber);
+        gInnovationNumber += 1;
         this.connectionGenes.push(newConnection2);
         this.nodeGenes[connectionGene.outNode].connectionInputsIndexes.push(this.currentConnectionId);
         this.currentConnectionId += 1;
@@ -208,9 +233,9 @@ class Genome {
     }
 
     mutate() {
-        if (Math.random() < gConnectionMutationRate) {
+        //if (Math.random() < gConnectionMutationRate) {
             this.mutateWeightPerturb();
-        }
+        //}
         
         if (Math.random() < gLinkMutationRate) {
             this.mutateConnectionGene();
@@ -224,13 +249,13 @@ class Genome {
             this.mutateNodeGene();
         }
 
-        if (Math.random() < gEnableMutationRate) {
-            this.mutateConnectionEnableDisable(true);
-        }
-        
-        if (Math.random() < gDisableMutationRate) {
-            this.mutateConnectionEnableDisable(false);
-        }
+        //[if (Math.random() < gDisableMutationRate) {
+        //[    this.mutateConnectionEnableDisable(false);
+        //[}
+        //[
+        //[if (Math.random() < gEnableMutationRate) {
+        //[    this.mutateConnectionEnableDisable(true);
+        //[}
     }
 
     sigmoid(x) {
@@ -241,6 +266,7 @@ class Genome {
         var i = 0;
         for (i = 0; i < this.nodeGenes.length; i++) {
             this.nodeGenes[i].isEvaluated = false;
+            this.nodeGenes[i].value = 0;
         }
     
         i = 0;
@@ -249,10 +275,12 @@ class Genome {
             this.nodeGenes[i].isEvaluated = true;
         }
 
+        var k = 0;
         var j = 0;
         var sum = 0;
         var isFinishedEvaluation = false;
-        while (!isFinishedEvaluation) {
+        for (k = 0; k < 20; k++) {
+        //while (!isFinishedEvaluation) {
             isFinishedEvaluation = true;
             for (i = 0; i < this.nodeGenes.length; i++) {
                 var currentNode = this.nodeGenes[i];
@@ -264,11 +292,6 @@ class Genome {
                         if (!currentConnection.isEnabled) {
                             continue;
                         }
-                        //console.log(currentConnection.inNode);
-                        //console.log(currentConnection);
-                        //console.log(this.nodeGenes.length);
-                        //console.log(this.connectionGenes);
-                        //console.log(this.nodeGenes);
                         var inputNode = this.nodeGenes[currentConnection.inNode];
                         if (inputNode.isEvaluated) {
                             sum = sum + currentConnection.weight * inputNode.value;
@@ -287,11 +310,17 @@ class Genome {
                     }
                 }
             }
+        //}
         }
         
         var outputs = [];
+        var c = 0;
         for (i = 0; i < this.numOutputs; i++) {
             outputs.push(this.nodeGenes[this.numInputs + i].value);
+            c += this.nodeGenes[this.numInputs + i].value;
+        }
+        if (c != 0) {
+            //console.log(outputs);
         }
         return outputs;
     }
@@ -314,7 +343,6 @@ class Genome {
         newGenome.currentNodeId = this.currentNodeId;
         newGenome.currentConnectionId = this.currentConnectionId;
         newGenome.fitness = this.fitness;
-        newGenome.currentInnovation = this.currentInnovation;
     
         return newGenome;
     }
@@ -433,6 +461,7 @@ function resetWorld() {
     gCircle.SetPosition(new box2d.b2Vec2(gCanvas.width / 2 / gBox2DScale, (gCanvas.height - (gWallsThickness + 30)) / gBox2DScale));
 
     resetRaycastArrays();
+    setRandomSeed(gRandomSeed);
 }
 
 function drawRaycasts() {
@@ -471,13 +500,13 @@ function resetRaycastArrays() {
 
 function raycastCallback(fixture, point, normal, fraction) {
     if (fixture.GetUserData() == gObjectTypes.ENEMY) {
-
         gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
         gCurrentRaycastFractions[gCurrentRaycastIndex] = 1.0 - fraction;
+        //gCurrentRaycastFractions[gCurrentRaycastIndex] = fraction;
         
         //returning fraction so it will stop this ray from hitting further 
         return fraction;
-    }
+    } 
 }
 
 function getRaycastData() {
@@ -494,6 +523,7 @@ function getRaycastData() {
         gCurrentRaycastIndex = i;
         gCurrentRaycatedPoints[gCurrentRaycastIndex].x = currentPoint.x;
         gCurrentRaycatedPoints[gCurrentRaycastIndex].y = currentPoint.y;
+        gCurrentRaycastFractions[gCurrentRaycastIndex] = 0;
         gWorld.RayCast(raycastCallback, gCircle.GetWorldCenter(), currentPoint);
 
         currentAngle += angle;
@@ -546,7 +576,6 @@ function tick() {
 
         if (gIsResetWorld) {
             gIsResetWorld = false;
-            console.log(gCurrentScore);
             gCurrentNetwork.fitness = gCurrentScore;
             gCurrentScore = 0;
             resetWorld();
@@ -564,38 +593,130 @@ function tick() {
     window.requestAnimationFrame(tick);
 }
 
-function setNextGeneration() {
-    gAllSpecies.push(gCurrentNetwork);
+function getRandomIntInRangeNotPRNG(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
-    if (gAllSpecies.length % gSpeciesPerCrossover == 0) {
-        gAllSpecies.sort(function(genome1, genome2) {return genome2.fitness - genome1.fitness});
-        //removing all failed species
+function setNextGeneration() {
+    if (gSpecies.length > 1 && Math.random() < gCrossoverChance) {
+        var i = 0;
+        for (i = 0; i < gSpecies.length; i++) {
+            gSpecies[i].sort(function(genome1, genome2) {return genome2.fitness - genome1.fitness});
+        }
+        gSpecies.sort(function(genome1, genome2) {return genome2[0].fitness - genome1[0].fitness});
+
+        //removing all failed genomes in species
         //this hack removes array elements, and is fater thea splice
-        gAllSpecies.length = gSpeciesPerCrossover;
-        var genome1 = gAllSpecies[0];
-        var genome2 = gAllSpecies[1];
+        //cut in half these species
+        for (i = 0; i < gSpecies.length; i++) {
+            gSpecies[i].length = Math.floor(gSpecies[i].length / 2) + 1;
+        }
+
+        if (gSpecies.length > gMaxSpecies) {
+            gSpecies.length = Math.floor(gSpecies.length / 2) + 1;
+        }
+
+        var randomIndex1 = getRandomIntInRangeNotPRNG(0, gSpecies.length - 1);
+        var randomIndex2 = getRandomIntInRangeNotPRNG(0, gSpecies.length - 1);
+        while (randomIndex2 == randomIndex1) {
+            randomIndex2 = getRandomIntInRangeNotPRNG(0, gSpecies.length - 1);
+        }
+
+        var genome1 = gSpecies[randomIndex1][0]; //the better genome is the base, it should contain all it's disjoints too
+        var genome2 = gSpecies[randomIndex2][0];
+
         gCurrentParentNetwork = genome1.copy();
     
-        console.log("crossover");
-        console.log(genome1.fitness);
-        console.log(genome2.fitness);
-        var i = 0;
+        //console.log(gSpecies);
         for (i = 0; i < gCurrentParentNetwork.connectionGenes.length; i++) {
-            if (genome2.connectionGenes.length < i) {
+            if (genome2.connectionGenes.length <= i) {
                 break;
             }
             
-            if (Math.random > 0.5) {
-                //instead of checking inovation, we retain the same index of the connection genes
-                gCurrentParentNetwork.connectionGenes[i] = genome2.connectionGenes[i].copy;
+            //checking the innovation of the current nodes.
+            //because same innovations only occur when the children are from the same ancestor, they are guaranteed to be in the same index
+            if (gCurrentParentNetwork.connectionGenes[i].innovation == genome2.connectionGenes[i].innovation) {
+                if (Math.random() > 0.5) {
+                    gCurrentParentNetwork.connectionGenes[i].weight = genome2.connectionGenes[i].weight;
+                    gCurrentParentNetwork.connectionGenes[i].isEnabled = genome2.connectionGenes[i].isEnabled;
+                }
             }
         }
 
         gCurrentNetwork = gCurrentParentNetwork.copy();
     } else {
-        gCurrentNetwork = gCurrentParentNetwork.copy();
+        gCurrentNetwork = gCurrentNetwork.copy();
+        //gCurrentNetwork = gCurrentParentNetwork.copy();
         gCurrentNetwork.mutate();
     }
+
+    addGenomeToSpecies(gCurrentNetwork);
+}
+
+function addGenomeToSpecies(genome) {
+    var isSpeciesExist = false;
+    var i = 0;
+    for (i = 0; i < gSpecies.length; i++) {
+        if (isSameSpecies(genome, gSpecies[i][0])) {
+            isSpeciesExist = true;
+            gSpecies[i].push(genome);
+            break;
+        }
+    }
+
+    if (!isSpeciesExist) {
+        var newSpecies = new Array();
+
+        newSpecies.push(genome);
+        gSpecies.push(newSpecies);
+    }
+}
+
+function isSameSpecies(genome1, genome2) {
+
+    var disjointsCount = 0;
+    var i = 0;
+    var weightSum = 0;
+    var sharedGenesCount = 0;
+    for (i = 0; i < genome1.connectionGenes.length; i++) {
+        if (genome2.connectionGenes.length <= i) {
+            disjointsCount = disjointsCount + 1;
+            continue;
+        }
+        
+        if (genome1.connectionGenes[i].innovation != genome2.connectionGenes[i].innovation) {
+            disjointsCount = disjointsCount + 1;
+        } else {
+            weightSum = weightSum + Math.abs(genome1.connectionGenes[i].weight - genome2.connectionGenes[i].weight);
+            sharedGenesCount = sharedGenesCount + 1;
+        }
+    }
+
+    for (i = 0; i < genome2.connectionGenes.length; i++) {
+        if (genome1.connectionGenes.length <= i) {
+            disjointsCount = disjointsCount + 1;
+            continue;
+        }
+        
+        if (genome2.connectionGenes[i].innovation != genome1.connectionGenes[i].innovation) {
+            disjointsCount = disjointsCount + 1;
+        }
+    }
+
+    var n = Math.max(genome1.connectionGenes.length, genome2.connectionGenes.length);
+    var disjointsDiff = 0;
+    var sharedGenesWeightDiff = 0;
+    if (n != 0) {
+        disjointsDiff = disjointsCount / n;
+    }
+    if (sharedGenesCount != 0) {
+        sharedGenesWeightDiff = weightSum / sharedGenesCount;
+    }
+    
+    var dd = gDisjointsDelta*disjointsDiff;
+    var dw = gSharedGenesWeightsDelta*sharedGenesWeightDiff;
+
+    return dd + dw < gDeltaThreshold;
 }
 
 function networkOutputsToKeys(outputs) {
@@ -1092,7 +1213,7 @@ function main() {
     createGenome(gNumberOfRays, gClickedKeysOutput.length);
     //gRandomSeed = parseInt(Math.random()*100000);
     gRandomSeed = 1337;
-    dropEnemy();
+    setRandomSeed(gRandomSeed);
     gLastDeltaTime = Date.now();
 
     tick();
