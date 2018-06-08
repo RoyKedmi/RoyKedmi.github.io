@@ -45,7 +45,7 @@ var gBulletVelocity = 2000;
 var gBulletThickness = 10;
 var gBulletLength = 30;
 var gShootingCooldown = 0.4;
-var gScorePerKill = 0.0;
+var gScorePerKill = 20.0;
 
 var gIsShootingOnCooldown = false;
 var gTimeBetweenShooting = 0;
@@ -54,41 +54,98 @@ var gEnemiesDropInterval = 1.0;
 var gRandomSeed = 0.0;
 
 var gCurrentRaycastIndex = 0;
-var gNumberOfRays = 100;
+var gNumberOfRays = 27;
 var gCurrentRaycatedPoints = [];
 var gCurrentRaycastFractions = [];
 var gRayLength = 1000;
 var gCrossoverChance = 0.3;
 
 //enemies size
-var gMinEnemyWidth = 50;
+var gMinEnemyWidth = 60;
 var gMaxEnemyWidth = 100;
-var gMinEnemyHeight = 50;
+var gMinEnemyHeight = 60;
 var gMaxEnemyHeight = 100;
 
 var gObjectTypes = { GROUND : 0, WALL: 1, CIRCLE: 2, ENEMY: 3, BULLET: 4 };
 var gBulletDirection = {RIGHT: 0, LEFT: 1, UP: 2, DOWN: 3};
-var gCurrentlyClickedKeys = { "rightClick": 0, "leftClick": 0, "upClick": 0, "shootRight": 0, "shootLeft": 0, "shootUp": 0, "shootDown": 0};
-var gClickedKeysOutput = [0, 0, 0, 0, 0, 0, 0];
+//var gCurrentlyClickedKeys = { "rightClick": 0, "leftClick": 0, "upClick": 0, "shootRight": 0, "shootLeft": 0, "shootUp": 0, "shootDown": 0};
+//var gClickedKeysOutput = [0, 0, 0, 0, 0, 0, 0];
+var gCurrentlyClickedKeys = { "rightClick": 0, "leftClick": 0, "shootRight": 0, "shootLeft": 0, "shootUp": 0};
+var gClickedKeysOutput = [0, 0, 0, 0, 0];
 
 var gMutationRateStep = 0.5;
-var gPerturbChance = 0.7;
+var gPerturbChance = 0.3;
 var gLinkMutationRate = 1.0;
 var gConnectionMutationRate = 0.7;
 var gMutationRateBias = 0.7;
 var gNodeMutationRate = 0.5;
 var gEnableMutationRate = 1.0;
 var gDisableMutationRate = 1.0;
-var gCurrentParentNetwork;
 var gCurrentNetwork;
+
 //an array of genome arrays
 var gSpecies = [];
 var gDisjointsDelta = 2.0;
 var gSharedGenesWeightsDelta = 1.0;
 var gDeltaThreshold = 0.4;
-var gMaxSpecies = 10;
+var gMaxSpecies = 20;
 
+var gSurvivingFitnessAverage = 0.3;
 var gInnovationNumber = 0;
+var gMaxStaleGenerations = 20;
+
+var gCurrentGenomeIndex = 0;
+var gCurrentGenerationGenomes = [];
+var gNumSpeciesPerGeneration = 20;
+
+class Specie {
+    constructor() {
+        this.genomes = [];
+        //Stale means that it didn't had a better fitness for number of generations
+        this.staleGenerations = 0;
+        this.maxFitness = 0;
+    }
+
+    breed() {
+        var newChild;
+        if (Math.random() < gCrossoverChance) {
+            var randomIndex1 = getRandomIntInRangeNotPRNG(0, this.genomes.length - 1);
+            var randomIndex2 = getRandomIntInRangeNotPRNG(0, this.genomes.length - 1);
+            //a genome can breed with itself!
+
+            var genome1 = this.genomes[randomIndex1];
+            var genome2 = this.genomes[randomIndex2];
+
+            var newGenome = genome1.copy();
+        
+            //console.log(gSpecies);
+            for (i = 0; i < newGenome.connectionGenes.length; i++) {
+                if (genome2.connectionGenes.length <= i) {
+                    break;
+                }
+                
+                //checking the innovation of the current nodes.
+                //because same innovations only occur when the children are from the same ancestor, they are guaranteed to be in the same index
+                if (newGenome.connectionGenes[i].innovation == genome2.connectionGenes[i].innovation) {
+                    if (Math.random() > 0.5) {
+                        newGenome.connectionGenes[i].weight = genome2.connectionGenes[i].weight;
+                        newGenome.connectionGenes[i].isEnabled = genome2.connectionGenes[i].isEnabled;
+                    }
+                }
+            }
+
+            newChild = newGenome;
+        } else {
+            var randomIndex1 = getRandomIntInRangeNotPRNG(0, this.genomes.length - 1);
+            var genome1 = this.genomes[randomIndex1];
+
+            newChild = genome1.copy();
+        }
+
+        newChild.mutate();
+        return newChild;
+    }
+}
 
 class Genome {
     constructor() {
@@ -156,7 +213,7 @@ class Genome {
                 this.connectionGenes[i].weight = weight + Math.random()*gMutationRateStep*2 - gMutationRateStep;
             } 
             //else {
-            //    enabledGenes[i].weight = this.getRandomFloatInRange(-2, 2);
+            //    this.connectionGenes[i].weight = this.getRandomFloatInRange(-2, 2);
             //}
         }
     }
@@ -249,13 +306,13 @@ class Genome {
             this.mutateNodeGene();
         }
 
-        //[if (Math.random() < gDisableMutationRate) {
-        //[    this.mutateConnectionEnableDisable(false);
-        //[}
-        //[
-        //[if (Math.random() < gEnableMutationRate) {
-        //[    this.mutateConnectionEnableDisable(true);
-        //[}
+        if (Math.random() < gDisableMutationRate) {
+            this.mutateConnectionEnableDisable(false);
+        }
+        
+        if (Math.random() < gEnableMutationRate) {
+            this.mutateConnectionEnableDisable(true);
+        }
     }
 
     sigmoid(x) {
@@ -501,12 +558,22 @@ function resetRaycastArrays() {
 function raycastCallback(fixture, point, normal, fraction) {
     if (fixture.GetUserData() == gObjectTypes.ENEMY) {
         gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
+        gCurrentRaycastFractions[gCurrentRaycastIndex] = -1 * (1.0 - fraction);
+        //gCurrentRaycastFractions[gCurrentRaycastIndex] = fraction;
+        
+        //returning fraction so it will stop this ray from hitting further 
+        return fraction;
+    } 
+
+    if (fixture.GetUserData() == gObjectTypes.WALL) {
+        gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
         gCurrentRaycastFractions[gCurrentRaycastIndex] = 1.0 - fraction;
         //gCurrentRaycastFractions[gCurrentRaycastIndex] = fraction;
         
         //returning fraction so it will stop this ray from hitting further 
         return fraction;
     } 
+    return fraction;
 }
 
 function getRaycastData() {
@@ -515,7 +582,7 @@ function getRaycastData() {
     var firstPoint = new box2d.b2Vec2(circleCenter.x + rayTraceLength, circleCenter.y);
     var firstPointCentered = new box2d.b2Vec2(rayTraceLength, 0);
     var currentPoint = firstPoint;
-    var angle = (360 / gNumberOfRays)*(Math.PI / 180);
+    var angle = -1 * (180 / (gNumberOfRays - 1))*(Math.PI / 180);
     var currentAngle = 0;
 
     var i = 0;
@@ -577,9 +644,10 @@ function tick() {
         if (gIsResetWorld) {
             gIsResetWorld = false;
             gCurrentNetwork.fitness = gCurrentScore;
+            console.log(gCurrentNetwork.fitness);
             gCurrentScore = 0;
             resetWorld();
-            setNextGeneration();
+            getNextGenome();
             break;
         }
 
@@ -597,77 +665,135 @@ function getRandomIntInRangeNotPRNG(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function setNextGeneration() {
-    if (gSpecies.length > 1 && Math.random() < gCrossoverChance) {
-        var i = 0;
-        for (i = 0; i < gSpecies.length; i++) {
-            gSpecies[i].sort(function(genome1, genome2) {return genome2.fitness - genome1.fitness});
-        }
-        gSpecies.sort(function(genome1, genome2) {return genome2[0].fitness - genome1[0].fitness});
+function getSpeciesAverageFitness(specie) {
+    var i = 0;
+    var fitnessSum = 0;
 
-        //removing all failed genomes in species
-        //this hack removes array elements, and is fater thea splice
-        //cut in half these species
-        for (i = 0; i < gSpecies.length; i++) {
-            gSpecies[i].length = Math.floor(gSpecies[i].length / 2) + 1;
-        }
-
-        if (gSpecies.length > gMaxSpecies) {
-            gSpecies.length = Math.floor(gSpecies.length / 2) + 1;
-        }
-
-        var randomIndex1 = getRandomIntInRangeNotPRNG(0, gSpecies.length - 1);
-        var randomIndex2 = getRandomIntInRangeNotPRNG(0, gSpecies.length - 1);
-        while (randomIndex2 == randomIndex1) {
-            randomIndex2 = getRandomIntInRangeNotPRNG(0, gSpecies.length - 1);
-        }
-
-        var genome1 = gSpecies[randomIndex1][0]; //the better genome is the base, it should contain all it's disjoints too
-        var genome2 = gSpecies[randomIndex2][0];
-
-        gCurrentParentNetwork = genome1.copy();
-    
-        //console.log(gSpecies);
-        for (i = 0; i < gCurrentParentNetwork.connectionGenes.length; i++) {
-            if (genome2.connectionGenes.length <= i) {
-                break;
-            }
-            
-            //checking the innovation of the current nodes.
-            //because same innovations only occur when the children are from the same ancestor, they are guaranteed to be in the same index
-            if (gCurrentParentNetwork.connectionGenes[i].innovation == genome2.connectionGenes[i].innovation) {
-                if (Math.random() > 0.5) {
-                    gCurrentParentNetwork.connectionGenes[i].weight = genome2.connectionGenes[i].weight;
-                    gCurrentParentNetwork.connectionGenes[i].isEnabled = genome2.connectionGenes[i].isEnabled;
-                }
-            }
-        }
-
-        gCurrentNetwork = gCurrentParentNetwork.copy();
-    } else {
-        gCurrentNetwork = gCurrentNetwork.copy();
-        //gCurrentNetwork = gCurrentParentNetwork.copy();
-        gCurrentNetwork.mutate();
+    for (i = 0; i < specie.genomes.length; i++) {
+        fitnessSum = fitnessSum + specie.genomes[i].fitness;
     }
 
-    addGenomeToSpecies(gCurrentNetwork);
+    return fitnessSum / specie.genomes.length;
+}
+
+function removeUselessSpecies() {
+    var i = 0;
+    var fitnessAverage = 0;
+
+    for (i = 0; i < gSpecies.length; i++) {
+        fitnessAverage = fitnessAverage + getSpeciesAverageFitness(gSpecies[i]);
+    }
+
+    fitnessAverage = fitnessAverage / gSpecies.length;
+
+
+    if (gSpecies.length < 3) {
+        return;
+    }
+
+    for (i = gSpecies.length - 1; i >= 2; i--) {
+        if (getSpeciesAverageFitness(gSpecies[i]) < fitnessAverage * gSurvivingFitnessAverage) {
+            gSpecies.splice(i, 1);
+        }
+    }
+}
+
+function removeFailedSpecies() {
+    var i = 0;
+
+    for (i = gSpecies.length - 2; i >= 2; i--) {
+        if (gSpecies[i].genomes[0] > gSpecies[i].maxFitness) {
+            gSpecies[i].maxFitness = gSpecies[i].genomes[0].fitness;
+            gSpecies[i].staleGenerations = 0;
+        } else {
+            gSpecies[i].staleGenerations = gSpecies[i].staleGenerations + 1;
+        }
+
+        if (gSpecies[i].staleGenerations > gMaxStaleGenerations) {
+            console.log("Removing Species");
+            gSpecies.splice(i, 1);
+        }
+    }
+}
+
+function getNextGenome() {
+    gCurrentGenomeIndex = gCurrentGenomeIndex + 1;
+    if (gCurrentGenomeIndex >= gCurrentGenerationGenomes.length) {
+        setNextGeneration();
+        gCurrentGenomeIndex = 0;
+    }
+
+    gCurrentNetwork = gCurrentGenerationGenomes[gCurrentGenomeIndex];
+}
+
+function setNextGeneration() {
+    var i = 0;
+    // arrange genomes by fitness
+    for (i = 0; i < gSpecies.length; i++) {
+        gSpecies[i].genomes.sort(function(genome1, genome2) {return genome2.fitness - genome1.fitness});
+    }
+
+    //arrange species by fitness
+    gSpecies.sort(function(genome1, genome2) {return genome2.genomes[0].fitness - genome1.genomes[0].fitness});
+
+
+    removeFailedSpecies();
+    //removing all failed genomes in species
+    //this hack removes array elements, and is fater thea splice
+    //cut in half these species
+    for (i = 0; i < gSpecies.length; i++) {
+        gSpecies[i].genomes.length = Math.floor(gSpecies[i].genomes.length / 2) + 1;
+    }
+
+    //If the population got too big, remove half 
+    if (gSpecies.length > gMaxSpecies) {
+        gSpecies.length = Math.floor(gSpecies.length / 2) + 1;
+    }
+
+    // may hurt the algorithm
+    //removeUselessSpecies();
+
+    gCurrentGenerationGenomes = [];
+    
+    for (i = 0; i < gSpecies.length; i++) {
+        var childGenome = gSpecies[i].breed();
+
+        gCurrentGenerationGenomes.push(childGenome);
+    }
+
+    for (i = gCurrentGenerationGenomes.length; i < gNumSpeciesPerGeneration; i++) {
+        var childGenome = gSpecies[getRandomIntInRangeNotPRNG(0, gSpecies.length -1)].breed();
+
+        gCurrentGenerationGenomes.push(childGenome);
+    }
+
+    //remove all but only the best genome of each specie
+    //for (i = 0; i < gSpecies.length; i++) {
+    //    gSpecies[i].genomes.length = 1;
+    //}
+
+    for (i = 0; i < gCurrentGenerationGenomes.length; i++) {
+        addGenomeToSpecies(gCurrentGenerationGenomes[i]);
+    }
+
+    console.log(gSpecies);
 }
 
 function addGenomeToSpecies(genome) {
     var isSpeciesExist = false;
     var i = 0;
     for (i = 0; i < gSpecies.length; i++) {
-        if (isSameSpecies(genome, gSpecies[i][0])) {
+        if (isSameSpecies(genome, gSpecies[i].genomes[0])) {
             isSpeciesExist = true;
-            gSpecies[i].push(genome);
+            gSpecies[i].genomes.push(genome);
             break;
         }
     }
 
     if (!isSpeciesExist) {
-        var newSpecies = new Array();
+        var newSpecies = new Specie();
 
-        newSpecies.push(genome);
+        newSpecies.genomes.push(genome);
         gSpecies.push(newSpecies);
     }
 }
@@ -731,11 +857,11 @@ function networkOutputsToKeys(outputs) {
 
     gCurrentlyClickedKeys["rightClick"] = gClickedKeysOutput[0];
     gCurrentlyClickedKeys["leftClick"] = gClickedKeysOutput[1];
-    gCurrentlyClickedKeys["upClick"] = gClickedKeysOutput[2];
-    gCurrentlyClickedKeys["shootRight"] = gClickedKeysOutput[3];
-    gCurrentlyClickedKeys["shootLeft"] = gClickedKeysOutput[4];
-    gCurrentlyClickedKeys["shootUp"] = gClickedKeysOutput[5];
-    gCurrentlyClickedKeys["shootDown"] = gClickedKeysOutput[6];
+    //gCurrentlyClickedKeys["upClick"] = gClickedKeysOutput[2];
+    gCurrentlyClickedKeys["shootRight"] = gClickedKeysOutput[2];
+    gCurrentlyClickedKeys["shootLeft"] = gClickedKeysOutput[3];
+    gCurrentlyClickedKeys["shootUp"] = gClickedKeysOutput[4];
+    //gCurrentlyClickedKeys["shootDown"] = gClickedKeysOutput[6];
 }
 
 function clearCanvas() {
@@ -1194,11 +1320,14 @@ function getRandomFloatInRange(min, max) {
 }
 ////////////////////////////////////////////////////////////
 
-function createGenome(numInputs, numOutputs) {
-    gCurrentParentNetwork = new Genome();
-    gCurrentParentNetwork.initialize(numInputs, numOutputs);
+function createFirstGenome(numInputs, numOutputs) {
+    gCurrentNetwork = new Genome();
+    gCurrentNetwork.initialize(numInputs, numOutputs);
     
-    gCurrentNetwork = gCurrentParentNetwork.copy();
+    //create the first specie
+    gSpecies = []
+    gSpecies.push(new Specie());
+    gSpecies[0].genomes.push(gCurrentNetwork);
 }
 
 function main() {
@@ -1207,10 +1336,10 @@ function main() {
     initalizeCanvas();
     initalizeBox2D();
     initalizeWorld();
-    initalizeKeyHandlers();
+    //initalizeKeyHandlers();
     resetRaycastArrays();
     
-    createGenome(gNumberOfRays, gClickedKeysOutput.length);
+    createFirstGenome(gNumberOfRays, gClickedKeysOutput.length);
     //gRandomSeed = parseInt(Math.random()*100000);
     gRandomSeed = 1337;
     setRandomSeed(gRandomSeed);
