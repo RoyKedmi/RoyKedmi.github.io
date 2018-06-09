@@ -90,7 +90,7 @@ var gSharedGenesWeightsDelta = 1.0;
 var gDeltaThreshold = 0.4;
 var gMaxSpecies = 20;
 
-var gSurvivingFitnessAverage = 0.3;
+var gSurvivingFitnessAverage = 0.2;
 var gInnovationNumber = 0;
 var gMaxStaleGenerations = 20;
 
@@ -557,8 +557,11 @@ function resetRaycastArrays() {
 
 function raycastCallback(fixture, point, normal, fraction) {
     if (fixture.GetUserData() == gObjectTypes.ENEMY) {
-        gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
-        gCurrentRaycastFractions[gCurrentRaycastIndex] = -1 * (1.0 - fraction);
+        var currentFraction = -1 * (1.0 - fraction);
+        if (gCurrentRaycastFractions[gCurrentRaycastIndex] > currentFraction) {
+            gCurrentRaycastFractions[gCurrentRaycastIndex] = currentFraction;
+            gCurrentRaycatedPoints[gCurrentRaycastIndex] = point;
+        }
         //gCurrentRaycastFractions[gCurrentRaycastIndex] = fraction;
         
         //returning fraction so it will stop this ray from hitting further 
@@ -751,7 +754,7 @@ function setNextGeneration() {
     }
 
     // may hurt the algorithm
-    //removeUselessSpecies();
+    removeUselessSpecies();
 
     gCurrentGenerationGenomes = [];
     
