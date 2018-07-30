@@ -1,0 +1,85 @@
+<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+<meta content="utf-8" http-equiv="encoding">
+
+<!-- 
+    Contact me:
+        Roy Kedmi
+        rskedmi@gmail.com
+
+    Big thanks to the internet for giving me knowledge.
+-->
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.3/dist/leaflet.css"
+   integrity="sha512-Rksm5RenBEKSKFjgI3a41vrjkw4EVPlJ3+OiI65vTjIdo9brlAacEuKOiQ5OFh7cOI1bkDwLqdLw3Zg0cRJAAQ=="
+   crossorigin=""/>
+
+<!-- Make sure you put this AFTER Leaflet's CSS -->
+<script src="https://unpkg.com/leaflet@1.3.3/dist/leaflet.js"
+   integrity="sha512-tAGcCfR4Sc5ZP5ZoVz0quoZDYX5aCtEm/eu1KhSLj2c9eFrylXZknQYmxUssFaVJKvvc0dJQixhGjG2yXWiV9Q=="
+   crossorigin=""></script>
+
+<script language="JavaScript" src="http://www.geoplugin.net/javascript.gp" type="text/javascript"></script>
+
+<script>
+function initalizeCSS() {
+
+    var cssData = `* { margin:0; padding:0; }
+                     html, body { width:100%; height:100%; }
+                     canvas { display:block; }`;
+
+    var css = document.createElement("style");
+    css.type = "text/css";
+    css.innerHTML = cssData;
+
+    document.body.appendChild(css);
+}
+
+var x_icon = 0;
+var mymap = 0;
+var first_marker = 0;
+var second_marker = 0;
+var poly_line = 0;
+function onClick(e) {
+    if (first_marker == 0) {
+        first_marker = L.marker(e.latlng, {icon: x_icon}).addTo(mymap);
+        return
+    }
+    if (second_marker == 0) {
+        second_marker = L.marker(e.latlng, {icon: x_icon}).addTo(mymap);
+        var latlnss = [first_marker.getLatLng(), second_marker.getLatLng()]
+        poly_line = L.polyline(latlnss, {color: "red", weight: 8, dashArray: [5, 20]}).addTo(mymap);
+        return
+    }
+
+    //Remove Line here
+    mymap.removeLayer(poly_line);
+    mymap.removeLayer(first_marker);
+    first_marker = 0;
+    mymap.removeLayer(second_marker);
+    second_marker = 0;
+}
+
+function main() {
+    initalizeCSS();
+    mymap = L.map('mapid', {attributionControl: false, zoomControl: false}).setView([51.505, -0.09], 13);
+
+    L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+                maxZoom: 18,
+                id: 'mapbox.pirates',
+                accessToken: 'pk.eyJ1IjoibWlkZ2VsZiIsImEiOiJjams4cjMwOWgxbHdmM2treWloaHA2MmtoIn0.ZBmu60bJ8CM6GqKUw0SttA'
+}).addTo(mymap);
+
+    x_icon = L.icon({iconUrl:"x.png", iconAnchor: [32, 32]})
+    mymap.on('click', onClick);
+    try {
+        mymap.setView([geoplugin_latitude(), geoplugin_longitude()], 10);
+    } catch(err) {
+    }
+    mymap.locate({setView: true, maxZoom: 16});
+}
+</script>
+
+<body onload="main()">
+    <div id="mapid", style="width: 100%; height: 100%;"></div>
+</body>
