@@ -1,0 +1,84 @@
+<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+<meta content="utf-8" http-equiv="encoding">
+
+<!-- 
+    Contact me:
+        Roy Kedmi
+        rskedmi@gmail.com
+
+    Big thanks to the internet for giving me knowledge.
+-->
+
+<!-- Make sure you put this AFTER Leaflet's CSS -->
+<script src="https://unpkg.com/vexflow/releases/vexflow-min.js">
+</script>
+
+<script>
+function initalizeCSS() {
+
+    var cssData = `* { margin:0; padding:0; }
+                     html, body { width:100%; height:100%; }
+                     canvas { display:block; }`;
+
+    var css = document.createElement("style");
+    css.type = "text/css";
+    css.innerHTML = cssData;
+
+    document.body.appendChild(css);
+}
+
+function getRandomValueFromArray(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+VF = Vex.Flow;
+function main() {
+    initalizeCSS();
+    
+    var div = document.getElementById("stave");
+    var renderer = new VF.Renderer(div, VF.Renderer.Backends.SVG);
+
+    renderer.resize(500, 500);
+
+    var context = renderer.getContext();
+    var stave = new VF.Stave(10, 40, 400);
+
+    stave.addClef("treble").addTimeSignature("4/4");
+    stave.setTempo( { name: "Allegretto", duration: "q", dots: 0, bpm: 66}, -30);
+    stave.setContext(context).draw();
+    
+    var possible_notes = ["a", "b", "c", "d", "e", "f", "g"];
+    var possible_octaves = ["3", "4", "5", "6"];
+    var random_notes = [];
+    var i = 0;
+    for (i = 0; i < 6; i++) {
+        var current_note = getRandomValueFromArray(possible_notes) + "/" + getRandomValueFromArray(possible_octaves);
+        while (random_notes.includes(current_note)) {
+            current_note = getRandomValueFromArray(possible_notes) + "/" + getRandomValueFromArray(possible_octaves);
+        }
+        random_notes[i] = current_note;
+        
+    }
+
+    var notes = [
+          new VF.StaveNote({clef: "treble", keys: [random_notes[0]], duration: "q" }),
+          new VF.StaveNote({clef: "treble", keys: [random_notes[1]], duration: "q" }),
+          //new VF.StaveNote({clef: "treble", keys: ["b/4"], duration: "qr" }),
+          new VF.StaveNote({clef: "treble", keys: [random_notes[2], random_notes[3]], duration: "q" }),
+          new VF.StaveNote({clef: "treble", keys: [random_notes[4], random_notes[5]], duration: "q" }),
+    ];
+
+    //var voice = new VF.Voice({num_beats: 4, beat_value: 4});
+    var voice = new VF.Voice();
+    voice.addTickables(notes);
+    
+    var formatter = new VF.Formatter().joinVoices([voice]).format([voice], 400);
+
+    voice.draw(context, stave);
+}
+</script>
+
+<body onload="main()">
+<div id="stave">
+</div>
+</body>
