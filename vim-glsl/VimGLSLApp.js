@@ -134,6 +134,15 @@ export default class VimGLSLApp {
         this.rootDiv.id = "rootDiv";
 
         document.body.appendChild(this.rootDiv);
+
+        this.welcomeModal = document.getElementById("welcomeModal");
+        this.welcomeModal.style.display = "block";
+
+        window.onclick = (event) => {
+            if (event.target == this.welcomeModal) {
+                this.welcomeModal.style.display = "none";
+            }
+        };
     }
 
     initalizeWebGL() {
