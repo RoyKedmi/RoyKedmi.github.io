@@ -1,5 +1,6 @@
 import FlappyBird from './FlappyBird.js'
 import Box2dUtils from './Box2dUtils.js'
+import PsuedoRandomGenerator from './PsuedoRandomGenerator.js'
 
 export default class GeneticFlappyBirdApp {
     static OBJECT_TYPES = { WALL : 0, GROUND: 1, BIRD: 2 };
@@ -13,8 +14,11 @@ export default class GeneticFlappyBirdApp {
         this.generationCount = 0;
         this.initalizeCSS();
         this.initalizeCanvas();
-        this.mutationRate = 0.05;
+        this.mutationRate = 0.001;
         this.allTimeBestScore = 0;
+        this.simulationSpeedFactor = 20;
+        //this.mapRandomSeed = 1337;
+        //this.psuedoRandomGenerator = new PsuedoRandomGenerator(this.mapRandomSeed);
 
         this.pipesSpace = this.canvas.height / 5 / this.box2DScale;
 
@@ -37,6 +41,7 @@ export default class GeneticFlappyBirdApp {
 
         this.lastDeltaTime = currentTime;
         this.timesNotUpdated += deltaTime;
+        this.timesNotUpdated = this.timesNotUpdated*this.simulationSpeedFactor;
 
         while (this.timesNotUpdated >= this.worldStepRate) {
             this.world.Step(this.worldStepRate, 10, 10);
@@ -79,7 +84,7 @@ export default class GeneticFlappyBirdApp {
 
     updateFlappyBirds() {
         for (let i = 0; i < this.flappyBirds.length; i++) {
-            this.flappyBirds[i].update();
+            this.flappyBirds[i].update(this.simulationSpeedFactor);
         }
     }
 
@@ -166,7 +171,7 @@ export default class GeneticFlappyBirdApp {
         for (let i = 0; i < this.flappyBirds.length; i++) {
             this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, polyPositionX, polyPositionY, size);
             this.flappyBirds[i].generateRandomBrain();
-            polyPositionX += size*3;
+            //polyPositionX += size*3;
         }
     }
 
@@ -186,9 +191,15 @@ export default class GeneticFlappyBirdApp {
         this.flappyBirds = new Array(this.numOfBirds);
         for (let i = 0; i < this.flappyBirds.length; i++) {
             this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, polyPositionX, polyPositionY, size);
-            this.flappyBirds[i].generateCombinedBrain(sortedBirds[0].brain, sortedBirds[1].brain);
-            this.flappyBirds[i].mutateBrain(this.mutationRate);
-            polyPositionX += size*3;
+            //if (i == 0 || i == 1) {
+            if (i == 0) {
+                this.flappyBirds[i].copyBrain(sortedBirds[0].brain);
+            } else {
+                //this.flappyBirds[i].generateCombinedBrain(sortedBirds[0].brain, sortedBirds[1].brain);
+                this.flappyBirds[i].copyBrain(sortedBirds[0].brain);
+                this.flappyBirds[i].mutateBrain(this.mutationRate);
+            }
+            //polyPositionX += size*3;
         }
     }
 
@@ -284,6 +295,7 @@ export default class GeneticFlappyBirdApp {
 
         //don't create pipes for the first slice
         if (this.worldSliceIndex == 0) {
+            //this.psuedoRandomGenerator.setRandomSeed(this.mapRandomSeed);
             this.worldSliceIndex += 1;
             return;
         }
@@ -291,6 +303,7 @@ export default class GeneticFlappyBirdApp {
         //create the pipes
         for (let i = 1; i < 4; i++) {
             polyWidth = this.canvas.width / 7 / 2 / this.box2DScale;
+            //let height = this.psuedoRandomGenerator.getRandomFloatInRange(0.2, 0.8);
             let height = this.getRandomFloatBetween(0.2, 0.8);
             polyHeight = height*this.canvas.height / 1 / this.box2DScale;
             polyPositionX = ((this.canvas.width / 3)*i / this.box2DScale) - polyWidth;
@@ -359,5 +372,18 @@ export default class GeneticFlappyBirdApp {
         var row = scoreTable.insertRow(0);
         var cell1 = row.insertCell(0);
         cell1.innerText = "Score:";
+
+        var simulationSpeedSlider = document.getElementById("simulationSpeedSlider");
+        this.simulationSpeedFactor = parseFloat(simulationSpeedSlider.value);
+
+        var simulationSpeedLabel = document.getElementById("simulationSpeedLabel");
+        simulationSpeedLabel.innerText = "Simulation Speed: " + this.simulationSpeedFactor;
+
+        var mutationRateSlider = document.getElementById("mutationRateSlider");
+        this.mutationRate = parseFloat(mutationRateSlider.value) / 100;
+
+        var mutationRateLabel = document.getElementById("mutationRateLabel");
+        mutationRateLabel.innerText = "Mutation Rate: " + parseInt(this.mutationRate*100) + "%";
+        
     }
 }

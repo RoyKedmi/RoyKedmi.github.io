@@ -24,7 +24,7 @@ export default class FlappyBird {
         this.body = Box2dUtils.createPolygon(this.world, this.startingPositionX, this.startingPositionY, size, size, 0, true, true, this);
     }
 
-    update() {
+    update(simulationSpeedFactor) {
         if (this.isDead) {
             return;
         }
@@ -34,11 +34,11 @@ export default class FlappyBird {
         let velocity = this.body.GetLinearVelocity();
         velocity.x = GeneticFlappyBirdApp.BIRD_X_VELOCITY; 
         this.getRaycastData();
-        this.activateBrain();
+        this.activateBrain(simulationSpeedFactor);
     }
 
-    jump() {
-        if (Date.now() - this.lastTimeJumped > this.jumpCooldown) {
+    jump(simulationSpeedFactor) {
+        if (Date.now() - this.lastTimeJumped > this.jumpCooldown/simulationSpeedFactor) {
             this.lastTimeJumped = Date.now();
             let velocity = this.body.GetLinearVelocity();
             velocity.y = 0;
@@ -183,19 +183,38 @@ export default class FlappyBird {
         }
     }
 
-    mutateBrain(mutationRate) {
+    copyBrain(brain1) {
+        this.generateRandomBrain();
         for (let i = 0; i < this.brain.length; i++) {
             for (let j = 0; j < this.brain[i].length; j++) {
                 for (let k = 0; k < this.brain[i][j].length; k++) {
-                    if (this.getRandomFloatBetween(0.0, 1.0) < mutationRate) {
-                        this.brain[i][j][k] = this.getRandomFloatBetween(-1.0, 1.0);
-                    }
+                        this.brain[i][j][k] = brain1[i][j][k];
                 }
             }
         }
     }
 
-    activateBrain() {
+    mutateBrain(mutationRate) {
+        var weightsCount = 0;
+        for (let i = 0; i < this.brain.length; i++) {
+            for (let j = 0; j < this.brain[i].length; j++) {
+                for (let k = 0; k < this.brain[i][j].length; k++) {
+                    weightsCount += this.brain[i][j].length;
+                }
+            }
+        }
+
+        var weightsToMutate = Math.floor(mutationRate*weightsCount);
+        for (let i = 0; i < weightsToMutate; i++) {
+            var firstIndex = this.getRandomIntBetween(0, this.brain.length);
+            var secondIndex = this.getRandomIntBetween(0, this.brain[firstIndex].length);
+            var thirdIndex = this.getRandomIntBetween(0, this.brain[firstIndex][secondIndex].length);
+
+            this.brain[firstIndex][secondIndex][thirdIndex] = this.getRandomFloatBetween(-1.0, 1.0);
+        }
+    }
+
+    activateBrain(simulationSpeedFactor) {
         var layerResults = [[], [], []];
         for (let i = 0; i < this.brain[0].length; i++) {
             var sum = 0;
@@ -223,12 +242,18 @@ export default class FlappyBird {
 
         //console.log(layerResults);
         if (layerResults[2][0] > 0.5) {
-            this.jump();
+            this.jump(simulationSpeedFactor);
         }
     }
 
     getRandomFloatBetween(min, max) {
         return Math.random() * (max - min) + min;
+    }
+
+    getRandomIntBetween(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min) + min);
     }
 
     sigmoid(x) {
