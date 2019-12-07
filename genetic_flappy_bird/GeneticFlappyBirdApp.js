@@ -17,8 +17,9 @@ export default class GeneticFlappyBirdApp {
         this.mutationRate = 0.001;
         this.allTimeBestScore = 0;
         this.simulationSpeedFactor = 20;
-        //this.mapRandomSeed = 1337;
-        //this.psuedoRandomGenerator = new PsuedoRandomGenerator(this.mapRandomSeed);
+        this.mapRandomSeed = this.getRandomIntBetween(0, 0xffffffff);
+        this.psuedoRandomGenerator = new PsuedoRandomGenerator(this.mapRandomSeed);
+        this.isRandomiseMap = false;
 
         this.pipesSpace = this.canvas.height / 5 / this.box2DScale;
 
@@ -184,19 +185,18 @@ export default class GeneticFlappyBirdApp {
         var angle = 0;
 
         this.flappyBirds.sort(function(a, b) {return b.score - a.score});
-        var sortedBirds = this.flappyBirds;
-        if (this.allTimeBestScore < sortedBirds[0].score) {
-            this.allTimeBestScore = sortedBirds[0].score;
+        var bestBird = this.flappyBirds[0];
+        if (this.allTimeBestScore < bestBird.score) {
+            this.allTimeBestScore = bestBird.score;
         }
         this.flappyBirds = new Array(this.numOfBirds);
         for (let i = 0; i < this.flappyBirds.length; i++) {
             this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, polyPositionX, polyPositionY, size);
             //if (i == 0 || i == 1) {
             if (i == 0) {
-                this.flappyBirds[i].copyBrain(sortedBirds[0].brain);
+                this.flappyBirds[i].copyBrain(bestBird.brain);
             } else {
-                //this.flappyBirds[i].generateCombinedBrain(sortedBirds[0].brain, sortedBirds[1].brain);
-                this.flappyBirds[i].copyBrain(sortedBirds[0].brain);
+                this.flappyBirds[i].copyBrain(bestBird.brain);
                 this.flappyBirds[i].mutateBrain(this.mutationRate);
             }
             //polyPositionX += size*3;
@@ -295,16 +295,23 @@ export default class GeneticFlappyBirdApp {
 
         //don't create pipes for the first slice
         if (this.worldSliceIndex == 0) {
-            //this.psuedoRandomGenerator.setRandomSeed(this.mapRandomSeed);
+            if (!this.isRandomiseMap) {
+                this.psuedoRandomGenerator.setRandomSeed(this.mapRandomSeed);
+            }
             this.worldSliceIndex += 1;
             return;
         }
 
+        var pipeMinHeight = 0.3;
+        var pipeMaxHeight = 0.7;
         //create the pipes
         for (let i = 1; i < 4; i++) {
             polyWidth = this.canvas.width / 7 / 2 / this.box2DScale;
-            //let height = this.psuedoRandomGenerator.getRandomFloatInRange(0.2, 0.8);
-            let height = this.getRandomFloatBetween(0.3, 0.7);
+            if (!this.isRandomiseMap) {
+                var height = this.psuedoRandomGenerator.getRandomFloatInRange(pipeMinHeight, pipeMaxHeight);
+            } else {
+                var height = this.getRandomFloatBetween(pipeMinHeight, pipeMaxHeight);
+            }
             polyHeight = height*this.canvas.height / 1 / this.box2DScale;
             polyPositionX = ((this.canvas.width / 3)*i / this.box2DScale) - polyWidth;
             polyPositionY = 0 / this.box2DScale;
@@ -323,6 +330,12 @@ export default class GeneticFlappyBirdApp {
 
     getRandomFloatBetween(min, max) {
         return Math.random() * (max - min) + min;
+    }
+
+    getRandomIntBetween(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min) + min);
     }
 
     initalizeCSS() {
@@ -385,5 +398,7 @@ export default class GeneticFlappyBirdApp {
         var mutationRateLabel = document.getElementById("mutationRateLabel");
         mutationRateLabel.innerText = "Mutation Rate: " + parseFloat(this.mutationRate*100).toFixed(3) + "%";
         
+        var randomiseMapCheckbox = document.getElementById("randomiseMapCheckbox");
+        this.isRandomiseMap = randomiseMapCheckbox.checked;
     }
 }
