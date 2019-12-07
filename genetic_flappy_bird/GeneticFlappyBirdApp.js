@@ -383,7 +383,7 @@ export default class GeneticFlappyBirdApp {
         this.mutationRate = parseFloat(mutationRateSlider.value) / 100;
 
         var mutationRateLabel = document.getElementById("mutationRateLabel");
-        mutationRateLabel.innerText = "Mutation Rate: " + parseInt(this.mutationRate*100) + "%";
+        mutationRateLabel.innerText = "Mutation Rate: " + parseFloat(this.mutationRate*100).toFixed(3) + "%";
         
     }
 }
