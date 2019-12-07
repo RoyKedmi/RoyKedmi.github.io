@@ -304,7 +304,7 @@ export default class GeneticFlappyBirdApp {
         for (let i = 1; i < 4; i++) {
             polyWidth = this.canvas.width / 7 / 2 / this.box2DScale;
             //let height = this.psuedoRandomGenerator.getRandomFloatInRange(0.2, 0.8);
-            let height = this.getRandomFloatBetween(0.2, 0.8);
+            let height = this.getRandomFloatBetween(0.3, 0.7);
             polyHeight = height*this.canvas.height / 1 / this.box2DScale;
             polyPositionX = ((this.canvas.width / 3)*i / this.box2DScale) - polyWidth;
             polyPositionY = 0 / this.box2DScale;
