@@ -16,12 +16,14 @@ export default class GeneticFlappyBirdApp {
         this.initalizeCanvas();
         this.mutationRate = 0.001;
         this.allTimeBestScore = 0;
-        this.simulationSpeedFactor = 20;
+        this.simulationSpeedFactor = 1;
         this.mapRandomSeed = this.getRandomIntBetween(0, 0xffffffff);
         this.psuedoRandomGenerator = new PsuedoRandomGenerator(this.mapRandomSeed);
         this.isRandomiseMap = false;
 
         this.pipesSpace = this.canvas.height / 5 / this.box2DScale;
+        this.jumpImpulseHeight = -1*(this.pipesSpace*7);
+        console.log(this.jumpImpulseHeight);
 
         this.initalizeWorld();
         this.timesNotUpdated = 0;
@@ -170,7 +172,7 @@ export default class GeneticFlappyBirdApp {
 
         this.flappyBirds = new Array(this.numOfBirds);
         for (let i = 0; i < this.flappyBirds.length; i++) {
-            this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, polyPositionX, polyPositionY, size);
+            this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, this.jumpImpulseHeight, polyPositionX, polyPositionY, size);
             this.flappyBirds[i].generateRandomBrain();
             //polyPositionX += size*3;
         }
@@ -191,7 +193,7 @@ export default class GeneticFlappyBirdApp {
         }
         this.flappyBirds = new Array(this.numOfBirds);
         for (let i = 0; i < this.flappyBirds.length; i++) {
-            this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, polyPositionX, polyPositionY, size);
+            this.flappyBirds[i] = new FlappyBird(this.world, this.box2DScale, this.jumpImpulseHeight, polyPositionX, polyPositionY, size);
             //if (i == 0 || i == 1) {
             if (i == 0) {
                 this.flappyBirds[i].copyBrain(bestBird.brain);

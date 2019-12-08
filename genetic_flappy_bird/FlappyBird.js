@@ -2,7 +2,7 @@ import Box2dUtils from './Box2dUtils.js'
 import GeneticFlappyBirdApp from './GeneticFlappyBirdApp.js'
 
 export default class FlappyBird {
-    constructor(world, box2DScale, startingPositionX, startingPositionY, size) {
+    constructor(world, box2DScale, jumpImpulseHeight, startingPositionX, startingPositionY, size) {
         this.world = world;
         this.box2DScale = box2DScale;
         this.startingPositionX = startingPositionX;
@@ -19,9 +19,12 @@ export default class FlappyBird {
         this.resetRaycastArrays();
         this.lastTimeJumped = 0;
         this.jumpCooldown = 300;
+        this.jumpImpulseHeight = jumpImpulseHeight;
 
         this.brain = null;
         this.body = Box2dUtils.createPolygon(this.world, this.startingPositionX, this.startingPositionY, size, size, 0, true, true, this);
+        let velocity = this.body.GetLinearVelocity();
+        velocity.x = GeneticFlappyBirdApp.BIRD_X_VELOCITY; 
     }
 
     update(simulationSpeedFactor) {
@@ -31,8 +34,8 @@ export default class FlappyBird {
 
         this.score = this.body.GetPosition().x - this.startingPositionX;
 
-        let velocity = this.body.GetLinearVelocity();
-        velocity.x = GeneticFlappyBirdApp.BIRD_X_VELOCITY; 
+        //let velocity = this.body.GetLinearVelocity();
+        //velocity.x = GeneticFlappyBirdApp.BIRD_X_VELOCITY; 
         this.getRaycastData();
         this.activateBrain(simulationSpeedFactor);
     }
@@ -42,7 +45,7 @@ export default class FlappyBird {
             this.lastTimeJumped = Date.now();
             let velocity = this.body.GetLinearVelocity();
             velocity.y = 0;
-            this.body.ApplyImpulse(new Box2dUtils.box2d.b2Vec2(0, -30), this.body.GetWorldCenter());
+            this.body.ApplyImpulse(new Box2dUtils.box2d.b2Vec2(0, this.jumpImpulseHeight), this.body.GetWorldCenter());
         }
     }
 
