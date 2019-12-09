@@ -1,0 +1,25 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+}
+
+canvas {
+    display: block;
+    background-color: #000000;
+}
+
+#datGuiContainer {
+    position: absolute;
+    transform-origin: top right;
+    transform: scale(1.5);
+    right: 0px;
+}
+
+#datGuiContainer option {
+    font-size: 20;
+}
