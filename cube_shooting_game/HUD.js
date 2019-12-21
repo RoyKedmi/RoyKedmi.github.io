@@ -1,4 +1,5 @@
-import * as THREE from './three.module.js'
+import * as THREE from './assets/js/lib/threejs/build/three.module.js'
+import CubeShootingGame from './CubeShootingGame.js'
 
 export default class HUD {
     constructor(renderer, player) {
@@ -27,9 +28,9 @@ export default class HUD {
     update() {
     }
 
-    render() {
+    render(isGamePaused) {
         this.clearCanvas();
-        this.renderComponents();
+        this.renderComponents(isGamePaused);
         this.texture.needsUpdate = true;
         this.renderer.render(this.scene, this.camera);
     }
@@ -39,31 +40,50 @@ export default class HUD {
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
-    renderComponents() {
+    renderComponents(isGamePaused) {
         var ctx = this.canvas.getContext("2d");
         var textSize = 40;
 
-        ctx.font = "Normal " + textSize + "px dpcomic";
-        ctx.textAlign = "left";
-        ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
-        ctx.fillText("Health: " + this.player.health, 2, textSize);
+        if (isGamePaused) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+            ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        ctx.textAlign = "right";
-        ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
-        ctx.fillText("Score: " + this.player.score, this.canvas.width - 2, textSize);
+            ctx.font = "Normal " + textSize + "px dpcomic";
+            ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
+            ctx.fillText("Game is paused, press any key to continue", this.canvas.width / 2, this.canvas.height / 2);
 
-        ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
-        ctx.fillText("Color: ", this.canvas.width / 2, textSize);
+            //do not continue to draw the other GUI
+            return;
+        }
 
-        var colorHex = "#" + this.player.currentColor.toString(16).padStart(6, "0");
-        ctx.fillStyle = colorHex;
-        ctx.fillRect(this.canvas.width / 2 + 40, 4, 100, 40);
+        if (CubeShootingGame.state == CubeShootingGame.states.inGame) {
+            ctx.font = "Normal " + textSize + "px dpcomic";
+            ctx.textAlign = "left";
+            ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
+            ctx.fillText("Health: " + this.player.health, 2, textSize);
 
-        ctx.textAlign = "center";
+            ctx.textAlign = "right";
+            ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
+            ctx.fillText("Score: " + this.player.score, this.canvas.width - 2, textSize);
+
+            ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
+            ctx.fillText("Color: ", this.canvas.width / 2, textSize);
+
+            var colorHex = "#" + this.player.currentColor.toString(16).padStart(6, "0");
+            ctx.fillStyle = colorHex;
+            ctx.fillRect(this.canvas.width / 2 + 40, 4, 100, 40);
+
+            ctx.textAlign = "center";
+            ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
+            ctx.fillText("Click on the cubes with the right color", this.canvas.width / 2 - 2, textSize * 2);
+            ctx.fillText("Press z, x or c to change color", this.canvas.width / 2 - 2, textSize * 3);
+
+        }
+        //draw the dot scope
         ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
-        ctx.fillText("Click on the cubes with the right color", this.canvas.width / 2 - 2, textSize * 2);
-        ctx.fillText("Press q, w or e to change color", this.canvas.width / 2 - 2, textSize * 3);
+        ctx.fillRect(this.canvas.width / 2, this.canvas.height /2, 1, 1);
     }
 
     resize() {
