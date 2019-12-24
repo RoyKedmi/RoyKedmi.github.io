@@ -150,4 +150,58 @@ export default class Utils {
         material.transparent = true;
         return material;
     }
+
+    static createBrickPathMaterial() {
+        var vertexShader = `
+            uniform float time;
+            uniform vec2 resolution;
+            varying vec4 pos;
+            void main() {
+                pos = vec4(position, 0.0) + vec4(0.5, 0.5, 0.5, 1.0);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+            `;
+
+        var fragmentShader = `
+            const int complexity      = 47;
+            const float fluid_speed     = 1018.0;
+            const float color_intensity = 0.8;
+            const float position_extra = 0.05;
+            uniform float time;
+            uniform float player_position;
+            uniform vec2 plane_size;
+            varying vec4 pos;
+
+            void main( void ) {
+                vec2 p = pos.yx / plane_size.yx;
+                float c = 1.0 - step(player_position + position_extra + sin(3.0*time)/100.0, p.x);
+                
+                for(int i=1;i<complexity;i++)
+                {
+                    vec2 newp=p + time*0.0101;
+                    newp.x+=0.6/float(i)*sin(float(i)*p.y+time/fluid_speed+0.3*float(i)) + 0.5;
+                    newp.y+=0.6/float(i)*sin(float(i)*p.x+time/fluid_speed+0.3*float(i+10)) - 0.5;
+                    p=newp;
+                }
+                
+                vec3 col=vec3(color_intensity*sin(3.0*p.x)+color_intensity,color_intensity*sin(3.0*p.y)+color_intensity,color_intensity*sin(p.x+p.y)+color_intensity);
+                gl_FragColor=vec4(col*c, c);
+            }
+            `;
+
+        var uniforms = {
+            time: { type: "f", value: 1.0 },
+            plane_size: { type: "v2", value: new THREE.Vector2() },
+            player_position: { type: "f", value: 0.0 },
+        };
+
+        var material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
+
+        material.transparent = true;
+        return material;
+    }
 }

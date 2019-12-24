@@ -1,5 +1,6 @@
 import * as THREE from './assets/js/lib/threejs/build/three.module.js'
 import TextButton from './TextButton.js'
+import BrickPath from './BrickPath.js'
 
 export default class MainMenu {
     static singleton = null;
@@ -34,8 +35,12 @@ export default class MainMenu {
         this.meshesGroup.add(this.floorMesh);
 
         this.fontLoader = new THREE.FontLoader();
-        this.fontLoader.load('./assets/fonts/DPComic_Regular.json', 
+        this.fontLoader.load("./assets/fonts/DPComic_Regular.json", 
                              (font) => this.onFontFinishedLoading(font));
+
+
+        this.brickPath = new BrickPath(this.meshesGroup, 10, 150);
+        this.brickPath.setPosition(new THREE.Vector3(0, -30, -50));
     }
 
     onFontFinishedLoading(font) {
@@ -60,6 +65,8 @@ export default class MainMenu {
                 obj.update(deltaTime);
             }
         });
+
+        this.brickPath.update(deltaTime);
     }
 
     getCenterPosition() {

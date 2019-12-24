@@ -2,6 +2,7 @@ import * as THREE from './assets/js/lib/threejs/build/three.module.js'
 import EnemyCube from './EnemyCube.js'
 import Utils from './Utils.js'
 import SpawnerPlate from './SpawnerPlate.js'
+import BrickPath from './BrickPath.js'
 
 export default class Player {
     constructor(scene, camera, controls) {
@@ -92,11 +93,15 @@ export default class Player {
         this.movementRaycaster.ray.origin.copy(this.controls.getObject().position);
         //this.movementRaycaster.ray.origin.y -= 8;
         this.movementRaycaster.ray.direction = new THREE.Vector3(0.0, -1.0, 0.0);
-        this.movementRaycaster.far = 8.0;
+        var rayHeight = 8.0;
+        this.movementRaycaster.far = rayHeight;
         
+        var isNearIntersectFound = false;
         var intersects = this.movementRaycaster.intersectObjects(this.scene.children, true);
         if (intersects.length > 0) {
+            isNearIntersectFound = true;
             //Stop from falling, but keep jumping if needed
+            //this.controls.getObject().position.y += rayHeight - intersects[0].distance;
             this.velocity.y = Math.max(0, this.velocity.y);
             if (this.velocity.y == 0) {
                 this.canJump = true;
@@ -107,7 +112,30 @@ export default class Player {
             if (intersect.object.userData instanceof SpawnerPlate) {
                 intersect.object.userData.activate();
             }
+
+            if (intersect.object.userData instanceof BrickPath) {
+                intersect.object.userData.setPlayerPosition(intersect.uv);
+            }
         });
+
+        if (!isNearIntersectFound) {
+            var currentPositionY = this.controls.getObject().position.y;
+            var nextPositionY = currentPositionY + this.velocity.y;
+            if (nextPositionY < currentPositionY) {
+                var rayDistance = Math.abs(nextPositionY - currentPositionY);
+                this.movementRaycaster.far = rayDistance;
+                //console.log(this.movementRaycaster.far);
+                var intersects = this.movementRaycaster.intersectObjects(this.scene.children, true);
+                if (intersects.length > 0) {
+                    //console.log("Here");
+                    this.controls.getObject().position.y -= intersects[0].distance - rayHeight;
+                    this.velocity.y = Math.max(0, this.velocity.y);
+                    if (this.velocity.y == 0) {
+                        this.canJump = true;
+                    }
+                }
+            }
+        }
 
         this.direction.z = Number(this.moveForward) - Number(this.moveBackwards);
         this.direction.x = Number(this.moveRight) - Number(this.moveLeft);
@@ -124,6 +152,8 @@ export default class Player {
 
             this.controls.moveRight(-this.velocity.x);
             this.controls.moveForward(-this.velocity.z);
+
+            //not really should be here, but okay
             this.controls.getObject().position.y += this.velocity.y;
         }
     }
