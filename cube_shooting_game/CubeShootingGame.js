@@ -5,7 +5,8 @@ import Player from './Player.js'
 import HUD from './HUD.js'
 import MainMenu from './MainMenu.js'
 import TextButton from './TextButton.js'
-import StoryLevel1 from './levels/StoryLevel1.js'
+import EndlessLevel from './levels/EndlessLevel.js'
+import ColorTypes from './ColorTypes.js'
 
 export default class CubeShootingGame {
     static states = { mainMenu: 0, inGame: 1, inBetweenLevels: 2 };
@@ -32,14 +33,14 @@ export default class CubeShootingGame {
         this.camera.position.z = 10;
 
         this.mainMenu = new MainMenu(this.scene, 
-                                     () => this.onStoryModeClicked(),
-                                     () => this.onEndlessModeClicked(),
+                                     () => this.onContinueClicked(),
+                                     () => this.onNewRunClicked(),
                                      () => this.onExitClicked());
 
         this.controls = new PointerLockControls(this.camera, document.body);
         this.player = new Player(this.scene, this.camera, this.controls);
 
-        this.currentLevel = new StoryLevel1(this.scene, this.player);
+        this.currentLevel = new EndlessLevel(this.scene, this.player);
 
         if (CubeShootingGame.state == CubeShootingGame.states.mainMenu) {
             var teleportPosition = new THREE.Vector3().copy(this.mainMenu.getCenterPosition());
@@ -47,7 +48,7 @@ export default class CubeShootingGame {
         }
 
         this.HUD = new HUD(this.renderer, this.player);
-        this.possibleColor = [0xff0000, 0x00ff00, 0x0000ff];
+        this.possibleColor = ColorTypes.allColorTypes;
 
         this.scene.background = new THREE.Color( 0x003070);
         this.scene.background = new THREE.Color( 0x000000);
@@ -58,6 +59,9 @@ export default class CubeShootingGame {
         this.scene.add( light );
 
         this.isGamePaused = false;
+        this.isExiting = false;
+        this.exitTimer = 0;
+        this.fallTimeExit = 3;
 
         document.addEventListener("mousemove", (e) => this.onMouseMove(e), false);
         document.addEventListener("mousedown", (e) => this.onMouseDown(e), false);
@@ -68,16 +72,28 @@ export default class CubeShootingGame {
 
         this.controls.addEventListener("lock", () => this.onControlLock());
         this.controls.addEventListener("unlock", () => this.onControlUnlock());
+
+        navigator.keyboard.lock(["Escape"]);
+
+        //this.onContinueClicked();
     }
 
-    onStoryModeClicked() {
+    onContinueClicked() {
         this.player.teleport(this.currentLevel.getSpawnPoint());
+        this.player.disableMovement();
+        CubeShootingGame.state = CubeShootingGame.states.inGame;
     }
 
-    onEndlessModeClicked() {
+    onNewRunClicked() {
+        this.player.teleport(this.currentLevel.getSpawnPoint());
+        this.player.disableMovement();
+        CubeShootingGame.state = CubeShootingGame.states.inGame;
     }
 
     onExitClicked() {
+        this.mainMenu.removeFloor();
+        this.isExiting = true;
+        this.exitTimer = 0;
     }
 
     onControlLock() {
@@ -90,6 +106,7 @@ export default class CubeShootingGame {
 
     onClick() {
         this.controls.lock();
+        document.documentElement.requestFullscreen();
     }
 
     onKeyDown(e) {
@@ -117,6 +134,10 @@ export default class CubeShootingGame {
             }
             if (e.code == "KeyA") {
                 this.player.moveLeft = true;
+            }
+            if (e.code == "Escape") {
+                CubeShootingGame.state = CubeShootingGame.states.mainMenu;
+                this.currentLevel.toMainMenu();
             }
         }
     }
@@ -150,7 +171,7 @@ export default class CubeShootingGame {
         if (this.lastIntersection) {
             if (this.lastIntersection.userData instanceof EnemyCube) {
                 if (!this.lastIntersection.userData.isGoingToDie) {
-                    if (this.player.currentColor == this.lastIntersection.material.color.getHex()) {
+                    if (this.player.currentColor == this.lastIntersection.userData.colorType) {
                         this.lastIntersection.userData.kill();
                         this.player.score += 1;
                     }
@@ -199,10 +220,17 @@ export default class CubeShootingGame {
         this.player.update(deltaTime);
         this.currentLevel.update(deltaTime);
 
-        if (this.player.getPosition().y < -500) {
-            var teleportPosition = new THREE.Vector3().copy(this.mainMenu.getCenterPosition());
-            teleportPosition.y += 500;
-            this.player.teleport(teleportPosition);
+        if (!this.isExiting) {
+            if (this.player.getPosition().y < -500) {
+                var teleportPosition = new THREE.Vector3().copy(this.mainMenu.getCenterPosition());
+                teleportPosition.y += 500;
+                this.player.teleport(teleportPosition);
+            }
+        } else {
+            this.exitTimer += deltaTime;
+            if (this.exitTimer > this.fallTimeExit) {
+                location.reload(true);
+            }
         }
 
         if (CubeShootingGame.state == CubeShootingGame.states.mainMenu) {

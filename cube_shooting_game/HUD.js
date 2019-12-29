@@ -1,5 +1,6 @@
 import * as THREE from './assets/js/lib/threejs/build/three.module.js'
 import CubeShootingGame from './CubeShootingGame.js'
+import ColorTypes from '../ColorTypes.js'
 
 export default class HUD {
     constructor(renderer, player) {
@@ -67,18 +68,18 @@ export default class HUD {
             ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
             ctx.fillText("Score: " + this.player.score, this.canvas.width - 2, textSize);
 
-            ctx.textAlign = "center";
+            ctx.textAlign = "left";
             ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
-            ctx.fillText("Color: ", this.canvas.width / 2, textSize);
+            ctx.fillText("Color: ", 2, textSize*2);
 
-            var colorHex = "#" + this.player.currentColor.toString(16).padStart(6, "0");
+            var colorHex = ColorTypes.getColorStringFromType(this.player.currentColor);
             ctx.fillStyle = colorHex;
-            ctx.fillRect(this.canvas.width / 2 + 40, 4, 100, 40);
+            ctx.fillRect(100, textSize*1.3, 70, 30);
 
-            ctx.textAlign = "center";
-            ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
-            ctx.fillText("Click on the cubes with the right color", this.canvas.width / 2 - 2, textSize * 2);
-            ctx.fillText("Press z, x or c to change color", this.canvas.width / 2 - 2, textSize * 3);
+            //ctx.textAlign = "center";
+            //ctx.fillStyle = "rgba(245, 245, 245, 1.00)";
+            //ctx.fillText("Click on the cubes with the right color", this.canvas.width / 2 - 2, textSize * 2);
+            //ctx.fillText("Press z, x or c to change color", this.canvas.width / 2 - 2, textSize * 3);
 
         }
         //draw the dot scope

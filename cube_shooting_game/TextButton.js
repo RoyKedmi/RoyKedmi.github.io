@@ -2,16 +2,18 @@ import * as THREE from './assets/js/lib/threejs/build/three.module.js'
 import Utils from './Utils.js'
 
 export default class TextButton {
-    constructor(parentMesh, font, text, onClick) {
+    constructor(parentMesh, font, text, onClick, size) {
         this.parentMesh = parentMesh;
         this.font = font;
         this.text = text;
         this.onClick = onClick;
+        this.isClickable = true;
+        this.size = size;
 
         var geometry = new THREE.TextGeometry(this.text, {
             font: this.font,
-            size: 5,
-            height: 1,
+            size: this.size,
+            height: 0.11,
             curveSegments: 20,
             bevelEnabled: false,
         });
@@ -42,15 +44,29 @@ export default class TextButton {
     }
 
     click() {
-        this.onClick();
+        if (this.isClickable) {
+            this.onClick();
+        }
+    }
+
+    setIsClickable(isClickable) {
+        this.isClickable = isClickable;
     }
 
     mark() {
-        this.originalColor = this.material.color.getHex();
-        this.material.color.set(0xff0000);
+        if (this.isClickable) {
+            this.originalColor = this.material.color.getHex();
+            this.material.color.set(0xff0000);
+        }
     }
 
     unmark() {
-        this.material.color.set(this.originalColor);
+        if (this.isClickable) {
+            this.material.color.set(this.originalColor);
+        }
+    }
+
+    setMaterial(material) {
+        this.buttonMesh.material = material;
     }
 }

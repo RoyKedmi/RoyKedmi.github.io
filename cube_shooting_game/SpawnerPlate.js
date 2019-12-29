@@ -1,6 +1,7 @@
 import * as THREE from './assets/js/lib/threejs/build/three.module.js'
 import EnemyCube from './EnemyCube.js'
 import CubeShootingGame from './CubeShootingGame.js'
+import InstructionsAI from './enemyAI/InstructionsAI.js'
 
 export default class SpawnerPlate {
     constructor(scene, player) {
@@ -24,6 +25,9 @@ export default class SpawnerPlate {
         this.isActivated = false;
         this.numberOfEnemies = 8;
         this.gameObjects = [];
+
+        this.instructionsAI = new InstructionsAI(this.meshesGroup);
+        this.instructionsAI.setPosition(new Vector3(0, 0, -30));
     }
 
     setPosition(position) {
@@ -34,10 +38,11 @@ export default class SpawnerPlate {
         if (!this.isActivated) {
             this.isActivated = true;
             this.player.disableMovement();
-            for (let i = 0; i < this.numberOfEnemies; i++) {
-                var enemyCube = new EnemyCube(this.scene, this.meshesGroup, this.player);
-                this.gameObjects.push(enemyCube);
-            }
+
+            //for (let i = 0; i < this.numberOfEnemies; i++) {
+            //    var enemyCube = new EnemyCube(this.scene, this.meshesGroup, this.player);
+            //    this.gameObjects.push(enemyCube);
+            //}
 
             CubeShootingGame.state = CubeShootingGame.states.inGame;
         }

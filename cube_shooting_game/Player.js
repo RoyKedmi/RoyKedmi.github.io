@@ -3,6 +3,7 @@ import EnemyCube from './EnemyCube.js'
 import Utils from './Utils.js'
 import SpawnerPlate from './SpawnerPlate.js'
 import BrickPath from './BrickPath.js'
+import ColorTypes from './ColorTypes.js'
 
 export default class Player {
     constructor(scene, camera, controls) {
@@ -22,7 +23,7 @@ export default class Player {
         this.movementRaycaster = new THREE.Raycaster();
 
         this.score = 0;
-        this.currentColor = 0xff0000;
+        this.currentColor = ColorTypes.red;
 
         this.isCameraShaking = false;
         this.cameraShakeDelta = 0;
@@ -153,9 +154,8 @@ export default class Player {
             this.controls.moveRight(-this.velocity.x);
             this.controls.moveForward(-this.velocity.z);
 
-            //not really should be here, but okay
-            this.controls.getObject().position.y += this.velocity.y;
         }
+        this.controls.getObject().position.y += this.velocity.y;
     }
 
     jump() {

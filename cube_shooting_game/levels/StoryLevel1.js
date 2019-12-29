@@ -1,7 +1,7 @@
 import * as THREE from '../assets/js/lib/threejs/build/three.module.js'
 import SpawnerPlate from '../SpawnerPlate.js'
 
-export default class StoryLevel1 {
+export default class EndlessLevel {
     constructor(scene, player) {
         this.scene = scene;
         this.player = player;
