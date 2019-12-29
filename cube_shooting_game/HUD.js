@@ -1,6 +1,6 @@
 import * as THREE from './assets/js/lib/threejs/build/three.module.js'
 import CubeShootingGame from './CubeShootingGame.js'
-import ColorTypes from '../ColorTypes.js'
+import ColorTypes from './ColorTypes.js'
 
 export default class HUD {
     constructor(renderer, player) {
