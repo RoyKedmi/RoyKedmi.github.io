@@ -20,7 +20,7 @@ export default class InstructionsAI extends EnemyAIBase {
         }
 
         this.fontLoader = new THREE.FontLoader();
-        this.fontLoader.load("../assets/fonts/DPComic_Regular.json", 
+        this.fontLoader.load("./assets/fonts/DPComic_Regular.json", 
                              (font) => this.onFontFinishedLoading(font));
 
     }
