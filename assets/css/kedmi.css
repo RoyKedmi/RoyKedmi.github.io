@@ -1,0 +1,50 @@
+
+.center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: [xl-start] 1fr 1.5rem [md-start] minmax(0, 1100px) [md-end] 1.5rem 1fr [xl-end];
+}
+
+.grid * {
+    grid-column: md;
+}
+
+.grid-xl {
+    grid-column: xl;
+}
+
+.is-paddingless-horizontal {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+@media (max-width: 672px) {
+    :root {
+        font-size: 80%;
+    }
+}
+
+
+@font-face {
+    font-family: 'dpcomic';
+    src: url('../fonts/dpcomic.ttf');
+}
+
+.navbar-title {
+    font: 36px dpcomic;
+}
+
+.navbar-subtitle {
+    font: 20px dpcomic;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
