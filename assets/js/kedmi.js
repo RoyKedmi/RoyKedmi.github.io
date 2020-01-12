@@ -28,55 +28,8 @@ function initalizeBulmaNavbars() {
     });
 }
 
-var routes = {
-                "/": "./mainPage.html",
-                "/projects": "./projects/projects.html",
-                "/devblog": "./devblog/devblog.html",
-             };
-
-var contentDiv = document.getElementById('contentDiv');
-
-function updateContent(filepath) {
-    fetch(filepath).then((res) => {
-        return res.text();
-    }).then((text) => {
-        contentDiv.innerHTML = text;
-    });
-}
-
-function loadContent(pathname) {
-    pathname = pathname.replace(/\/+$/, '');
-    var filepath = routes[pathname];
-    if (!filepath) {
-        filepath = routes[pathname + "/"];
-    }
-    if (!filepath) {
-        filepath = routes["/"];
-        window.history.replaceState(null, null, "");
-    }
-
-    updateContent(filepath);
-}
-
-function navigateToItem(pathname) {
-    window.history.pushState({}, pathname, window.location.origin + pathname);
-    loadContent(pathname);
-}
-
-function initalizeSPANavigation() {
-    window.onpopstate = () => {
-        var pathname = window.location.pathname;
-        loadContent(pathname);
-    }
-}
-
 function main() {
     initalizeBulmaNavbars();
-    initalizeSPANavigation();
-
-    var pathname = window.location.pathname;
-    loadContent(pathname);
-    //navigateToItem(window.location.pathname);
 }
 
 main();
