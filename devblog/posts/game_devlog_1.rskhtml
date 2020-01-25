@@ -1,6 +1,7 @@
 <meta name="twitter:card" content="summary"></meta>
+<meta property="og:image" content="https://kedmi.io/assets/img/batman_slap1.jpg" />
 <meta property="og:title" content="Game Devlog #1!"/>
-<meta property="og:image" content="/assets/img/batman_slap1.jpg" />
+<meta property="og:description" content="So this is the first devlog of the game, but I've been developing the game for something like a month now. Because I'm working a full time job, the month I've been working on the game is not really a month, I manage to scrap a few hours here and there after work."/>
 <time datetime="2020-01-25 20:43"></time>
 <div class="content is-large">
 <h1>Game Devlog #1!</h1>
