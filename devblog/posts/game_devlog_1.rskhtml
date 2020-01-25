@@ -1,0 +1,53 @@
+<time datetime="2020-01-25 20:43"></time>
+<div class="content is-large">
+<h1>Game Devlog #1!</h1>
+
+<p>
+Hello again!<br/>
+So this is the first devlog of the game, but I've been developing the game for something like a month now.
+Because I'm working a full time job, the "month" I've been working on the game is not really a month, I manage to scrap a few hours here and there after work.
+It all started when I was looking for a project to do and I decided to jump into threejs - which is amazing!
+I decided to make a very small prototype for a game which turned out to be fun.
+The Idea for the game was simple - cubes are spawning at a distance from you and slowly come towards you.
+Each cube has a different color - Red Green or Blue and you need to shoot the right color at each cube.
+<br/>
+</p>
+
+<p>
+My friends played the prototype and they said it was fun! - and I felt happy that I made something that people really enjoy!
+This feeling made me return to game development. Feeling that "this time it will be different" was not enough, I knew I need to change the way I've been developing my last games. One of the major decisions I took was to decide on the game scope now and make it small.
+So the scope of the game is:
+<br/>
+<ol>
+<li>Colorful cubes are coming at you - you need to shoot with the right color</li>
+<li>As time passes the cubes become faster and faster, and their health is getting heigher</li>
+<li>You can earn points and buy items which you don't know what they do like roguelike games</li>
+</ol>
+And that's it! Thinking that this small scope is nothing to make - I started working on it feeling like I'll finish in no time. 
+<br/>
+I WAS WRONG. 
+<br/>
+There is so much things to do, even with this small scope. And when you consider that I'm working a fulltime job alongside development - I got a real slap to the face.
+<br/>
+</p>
+<img src="/assets/img/batman_slap1.jpg"></img>
+
+<p>
+Yeaaahhhh, so in the near future I'm gonna put the game in my site and let people play it. I want to start iterating and improving the game depending on people feedback. I also built a custom enemy editor that I want to upload to the site - but I'm really not sure about it.
+I'm currently working on the power curve of the enemies, and I a little lost on how to regulate the power curve with the enemies type that you can build in the enemy editor.
+<br/>
+</p>
+
+<p>
+Here is a picture of how the game look like right now:
+<img src="/assets/img/screenshot1.png"></img>
+I really want to start and play with some cool shaders and effects to make the game more appealing!
+But I need a basic playable game first. And this is my main priority now, get a working game out there - ASAP.
+</p>
+<p>
+See you next time,
+<br/>
+Roy (:
+</p>
+
+</div>

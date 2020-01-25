@@ -22,7 +22,7 @@ def generate_static_html(template):
 def generate_devblog(template):
     directory = "../devblog/posts/"
     devblog_title = '<h1 class="title is-size-1 center">Devblog</h1>'
-    link = "<p>{} <a href='/devblog/posts/{}'>{}</a></p>"
+    link = "<p style=\"margin: 0;\">{} <a href='/devblog/posts/{}'>{}</a></p>"
     links = []
     for subdir, dirs, files in os.walk(directory):
         for filename in files:
@@ -38,17 +38,15 @@ def generate_devblog(template):
                 links.append(link.format(publish_time, filename, title))
     
     devblog_data = devblog_title
-    devblog_data += "<div>"
+    devblog_data += '<div class="content is-large">'
     for l in links:
         devblog_data += l;
-        print devblog_data
     devblog_data += "</div>"
 
     html_data = template.replace("CONTENT_DIV_MAGIC", devblog_data)
     devblog_file = open("../devblog/devblog.html", "wb")
     devblog_file.write(html_data);
     devblog_file.close()
-    print html_data
 
 def main():
     template_file = open("./template.html", "rb")
