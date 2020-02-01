@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import os
+from datetime import datetime
 from lxml import html
 
 def generate_static_html(template):
@@ -34,13 +35,16 @@ def generate_devblog(template):
                 html_file.close()
                 tree = html.fromstring(html_data)
                 publish_time = tree.xpath('//time')[0].get('datetime')
+                publish_time_value = datetime.strptime(publish_time, "%Y-%m-%d %H:%M")
                 title = tree.xpath('//h1')[0].text
-                links.append(link.format(publish_time, filename, title))
+                links.append((publish_time_value, link.format(publish_time, filename, title)))
     
     devblog_data = devblog_title
     devblog_data += '<div class="content is-large">'
+
+    links.sort(key = lambda l: l[0], reverse=True)
     for l in links:
-        devblog_data += l;
+        devblog_data += l[1];
     devblog_data += "</div>"
 
     html_data = template.replace("CONTENT_DIV_MAGIC", devblog_data)

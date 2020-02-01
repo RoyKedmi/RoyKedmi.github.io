@@ -1,0 +1,44 @@
+<meta name="twitter:card" content="summary"></meta>
+<meta property="og:image" content="https://kedmi.io/assets/img/tired_cat.jpg" />
+<meta property="og:title" content="Game Devlog #2!"/>
+<meta property="og:description" content="TL;DR: I had a rough week with my fulltime job and I didn't manage to get much done. Motivation is kindof low right now - but we will persevere!"/>
+<time datetime="2020-02-01 04:49"></time>
+<div class="content is-large">
+<h1 class="title is-1">Game Devlog #2!</h1>
+<h5 class="subtitle is-3">
+<br/>
+TL;DR: I had a rough week with my fulltime job and I didn't manage to get much done. Motivation is kindof low right now - but we will persevere!
+</h2>
+<p>
+Hi!<br/>
+So my fulltime job took a lot from me this week (in time and mental energy) and I didn't manage to get a lot done. The hardest part was to accept the fact that I have time to work on my game, but I can't muster the power to do it. After a long day at work, I just want to watch some twitch streams and chill - continue working after work takes a lot from you. It's a kind of a downward motivation spiral, you don't have the power to work on the game so your motivation drops because you have no progress, and then when you have power to make the game your motivation is so low that you don't wanna do it, and then you don't make progress - so your motivation is getting lower and lower.
+<br/>
+</p>
+
+<img src="/assets/img/tired_cat.jpg"></img>
+<br/>
+
+<p>
+But enough with depressing motivation shit, let's talk about what I did manage to do this week. The last week and a half I was thinking how am I gonna normalize the enemies created with the enemy editor to the current level. It's a hard design decision that will affect the difficulty of the game and thus the amount of enjoyment the player could get from the game. I tried a few things and I came to a conclusion that I have to change the design of the enemies. I noticed that it's really hard to aim at two cubes that are too close together. 
+<br/>
+<br/>
+So instead of making enemies as a big chunk of colored cubes that the player needs to shoot before they reach to him, I turned all the enemies to be spawners of cubes. Each enemy will have spawn logic attached to him, and the difficulty of the enemy is the number of spawn logics it has. (If the enemy spawns 4 cubes it's level is gonna be 4). The enemies for the current wave is determined by spawning random enemies that their sum will be the current wave. (if current wave is 4, the possible enemies combinations could be 3+1, 1+1+1+1, 2+2, 4)
+The spawner enemies themselves will not be killable, but now each wave will have a countdown timer. When the countdown reaches zero the current wave disappers and a new wave is spawned.
+<br/>
+<br/>
+After implementing this, I played a little with the game AND IT FELT GOOD!. It felt like I was playing a game that is challenging with rising difficulty! It's really hard for me to explain why I'm so exicted about this - It feels like I got something that will be fun in my hand right now! At some point it became too hard for me to play - and that's exactly where the items will fit. The items will balance the rising difficulty - making it crucial to choose the right items/items combos from the shop. 
+<br/>
+<br/>
+Oh yeah, I added a shop prototype that does nothing. Every five levels you have a shop that you can choose items from. I'm still wondering about the shop decision. I really want the player to feel that he/she is not leaving the action. If the shop appears every five levels, it could break the flow of the game (suddenly stop the levels instead of buying items on the go while still fighing). I guess I'll see if the decision is right after play testing the game a bit and see what is better.
+<br/>
+</p>
+
+<p>
+That's it, I hope that next week I'll muster more power and I'll make more progress.
+<br/>
+See you next time,
+<br/>
+Roy (:
+</p>
+
+</div>
