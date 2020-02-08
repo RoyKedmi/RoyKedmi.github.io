@@ -1,0 +1,39 @@
+<meta name="twitter:card" content="summary"></meta>
+<meta property="og:image" content="https://kedmi.io/assets/img/ski_instructor.jpg" />
+<meta property="og:title" content="Game Devlog #3!"/>
+<meta property="og:description" content="TL;DR: Went to my first ski vacation with my friends, had a lot of fun, didn't work on the game so much because a vacation is a vacation."/>
+<time datetime="2020-02-08 16:21"></time>
+<div class="content is-large">
+<h1 class="title is-1">Game Devlog #3!</h1>
+<h5 class="subtitle is-3">
+<br/>
+TL;DR: Went to my first ski vacation with my friends, had a lot of fun, didn't work on the game so much because a vacation is a vacation.
+</h2>
+<p>
+Hi!<br/>
+So there is not much to talk about because I didn't make any progress in the game - so this devlog will be quick. There was only one day in the vacation that I worked on the game, I added the "rand" function to the enemy editor. But while chilling with my friends in the apartment we played a lot of the jackbox tv games (like fibbage), and I wanted to make a game that we could all play (with the same concept of a few players playing from their phone and sharing a big screen for the game). 
+<br/>
+<br/>
+So I went ahead and made a quick game while I was there. The game is simple - you're a cube at the bottom of the screen. Colored cubes are falling from the sky, you need to move left and right and shoot the right color on each of the cubes. The catch is that each of the players have only one button. It turned out to be fun! It created very interesting dynamics between the players.
+<br/>
+<br/>
+Here is a picture from the game:
+<img src="/assets/img/ski_game.png"></img>
+
+<br/>
+</p>
+
+<p>
+I remember from the first time I tried being a full time indie developer, I thought of the game non stop and I just couldn't let it go when I was on a vacation. I know now that if you can't take your time off you'll get burnt really quickly. I'm here to fix my mistakes - So when I'm on a vacation I'm not working on the game - or even thinking about it.
+</p>
+<img src="/assets/img/ski_instructor.jpg"></img>
+<br/>
+
+<p>
+<br/>
+See you next time,
+<br/>
+Roy (:
+</p>
+
+</div>
