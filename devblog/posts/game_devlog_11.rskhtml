@@ -2,7 +2,7 @@
 <meta property="og:image" content="https://kedmi.io/assets/img/jim_carrey_face.jpg" />
 <meta property="og:title" content="Game Devlog #11!"/>
 <meta property="og:description" content="TL;DR: Still working on my digital painting and composing skills. Waiting to the point that I'll be good enough to actually make something that someone wants to play."/>
-<time datetime="2020-04-04 19:52"></time>
+<time datetime="2020-04-04 19:57"></time>
 <div class="content is-large">
 <h1 class="title is-1">Game Devlog #11!</h1>
 <h5 class="subtitle is-3">
@@ -20,6 +20,9 @@ Still working from home because of the COVID-19 situation - Nothing new about th
 I'm uploading progress videos about my digital painting progress, here are a few I did this week:
 <br/>
 </p>
+<figure class="image is-16by9">
+<iframe class="has-ratio" width="1113" height="826" src="https://www.youtube.com/embed/9FDdQ46bA_Y" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+</figure>
 <figure class="image is-16by9">
 <iframe class="has-ratio" width="1113" height="826" src="https://www.youtube.com/embed/lalRCHKTH24" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 </figure>
