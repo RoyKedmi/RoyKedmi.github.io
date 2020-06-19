@@ -1,11 +1,18 @@
 import './ModelAnimationsMenu.js'
 import './CaptureMenu.js'
+import './PostProcessingMenu.js'
 import * as THREE from '../assets/js/lib/threejs/build/three.module.js'
 import { OBJLoader } from '../assets/js/lib/threejs/examples/jsm/loaders/OBJLoader.js'
 import { FBXLoader } from '../assets/js/lib/threejs/examples/jsm/loaders/FBXLoader.js'
 import { GLTFLoader } from '../assets/js/lib/threejs/examples/jsm/loaders/GLTFLoader.js'
 import { RGBELoader } from '../assets/js/lib/threejs/examples/jsm/loaders/RGBELoader.js'
 import { OrbitControls } from '../assets/js/lib/threejs/examples/jsm/controls/OrbitControls.js'
+import { EffectComposer } from '../assets/js/lib/threejs/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from '../assets/js/lib/threejs/examples/jsm/postprocessing/RenderPass.js';
+import { GlitchPass } from '../assets/js/lib/threejs/examples/jsm/postprocessing/GlitchPass.js';
+import { ShaderPass } from '../assets/js/lib/threejs/examples/jsm/postprocessing/ShaderPass.js';
+import { PixelShader } from '../assets/js/lib/threejs/examples/jsm/shaders/PixelShader.js';
+import { HighlightCaptureShader } from '../shaders/HighlightCaptureShader.js';
 
 export default Vue.component('animation-app', {
     methods: {
@@ -14,7 +21,6 @@ export default Vue.component('animation-app', {
             //this.currentAnimations = ["AA"];
             this.previousTime = 0;
             this.currentAnimationAction = null;
-            this.isAnimationStopped = false;
 
             this.scene = new THREE.Scene();
             //this.scene.background = new THREE.Color(0x0);
@@ -28,9 +34,22 @@ export default Vue.component('animation-app', {
             this.renderer.setPixelRatio( window.devicePixelRatio );
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.toneMappingExposure = 1.0;
-
             document.getElementById('renderer').appendChild(this.renderer.domElement);
 
+            this.effectComposer = new EffectComposer(this.renderer);
+
+            this.renderPass = new RenderPass(this.scene, this.camera);
+            this.effectComposer.addPass(this.renderPass);
+
+            this.pixelPass = new ShaderPass(PixelShader);
+            this.effectComposer.addPass(this.pixelPass);
+
+            this.highlightCapturePass = new ShaderPass(HighlightCaptureShader);
+            this.effectComposer.addPass(this.highlightCapturePass);
+
+            //this.glitchPass = new GlitchPass();
+            //this.effectComposer.addPass(this.glitchPass);
+            
             this.controls = new OrbitControls(this.camera, this.renderer.domElement);
             this.camera.position.set( 0, 20, 100 );
             this.controls.update();
@@ -157,8 +176,8 @@ export default Vue.component('animation-app', {
         },
 
         changeAnimation() {
+            this.$store.commit("setIsAnimationPlaying", true);
             var animationName = this.currentAnimationName;
-            this.isAnimationStopped = false;
             if (this.currentAnimationAction) {
                 this.currentAnimationAction.stop();
                 this.currentAnimationAction.reset();
@@ -175,7 +194,7 @@ export default Vue.component('animation-app', {
         },
 
         setAnimationTime(animationTime) {
-            this.isAnimationStopped = true;
+            this.$store.commit("setIsAnimationPlaying", false);
             if (this.currentAnimationAction) {
                 //this.currentAnimationAction.stop();
                 //this.currentAnimationAction.reset();
@@ -190,11 +209,24 @@ export default Vue.component('animation-app', {
             this.previousTime = time;
 
             this.controls.update();
-            if (this.animationMixer && !this.isAnimationStopped) {
+            if (this.animationMixer && this.isAnimationPlaying) {
                 this.animationMixer.update(dt);
             }
 
-            this.renderer.render(this.scene, this.camera);
+            this.updateShaders(time);
+            this.effectComposer.render();
+            //this.renderer.render(this.scene, this.camera);
+        },
+
+        updateShaders(time) {
+            this.highlightCapturePass.uniforms['canvasSize'].value.x = this.renderer.domElement.width;
+            this.highlightCapturePass.uniforms['canvasSize'].value.y = this.renderer.domElement.height;
+            this.highlightCapturePass.uniforms['captureSize'].value.x = this.$store.state.captureWidth;
+            this.highlightCapturePass.uniforms['captureSize'].value.y = this.$store.state.captureHeight;
+            this.highlightCapturePass.uniforms['isCaptureVisible'].value = this.$store.state.isCaptureVisible;
+
+            this.pixelPass.uniforms['resolution'].value = new THREE.Vector2(this.renderer.domElement.width, this.renderer.domElement.height);
+            this.pixelPass.uniforms['pixelSize'].value = 5;
         },
     },
     
@@ -202,6 +234,7 @@ export default Vue.component('animation-app', {
         ...Vuex.mapState([
             'currentModelPath',
             'currentAnimationName',
+            'isAnimationPlaying',
         ]),
     },
 
@@ -230,12 +263,14 @@ export default Vue.component('animation-app', {
                     </div>
                     <v-app-bar app clipped-left clipped-right>
                     </v-app-bar>
-                    <v-navigation-drawer app clipped>
+                    <v-navigation-drawer app clipped disable-resize-watcher>
+                        <post-processing-menu>
+                        </post-processing-menu>
                         <v-btn @click="onClickLoadButton" color="primary">
                             Load Model
                         </v-btn>
                     </v-navigation-drawer>
-                    <v-navigation-drawer app clipped right>
+                    <v-navigation-drawer app clipped right disable-resize-watcher>
                         <model-animations-menu :animations=this.currentAnimations>
                         </model-animations-menu>
                         <capture-menu @setAnimationTime="setAnimationTime" :currentAnimationDuration=this.currentAnimationDuration>

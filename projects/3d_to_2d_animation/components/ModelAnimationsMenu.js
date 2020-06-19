@@ -22,8 +22,6 @@ Vue.component('model-animations-menu', {
     data: function () {
         return { currentSelectedButton: "No Animation",
                  currentDuration: 0,
-                 numberOfFrames: 10,
-                 currentFrame: 1,
                };
     },
 
@@ -31,12 +29,6 @@ Vue.component('model-animations-menu', {
     watch: {
         animations: function(newAnimations, oldAnimations) {
             this.onButtonClick({currentTarget: { name: newAnimations[0].name }});
-        },
-
-        currentFrame: function(newFrame, oldFrame) {
-            let frameInterval = this.currentDuration / this.numberOfFrames;
-            let animationTime = (newFrame - 1)*frameInterval;
-            this.$emit('setAnimationTime', animationTime);
         },
     },
 

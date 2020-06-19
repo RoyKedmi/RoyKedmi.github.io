@@ -6,12 +6,7 @@ Vue.component('capture-menu', {
     },
 
     data: function () {
-        return { currentSelectedButton: "No Animation",
-                 numberOfFrames: 10,
-                 currentFrame: 1,
-                 captureWidth: 512,
-                 captureHeight: 512,
-               };
+        return { };
     },
 
     props: ['currentAnimationDuration'],
@@ -22,13 +17,54 @@ Vue.component('capture-menu', {
             this.$emit('setAnimationTime', animationTime);
         },
         currentAnimationDuration: function(newDuration) {
-            this.numberOfFrames = parseInt(newDuration / 0.1)
+            let value = parseInt(newDuration / 0.1)
+            this.$store.commit('setNumberOfFrames', value);
         },
     },
 
     computed: {
         timeBetweenFrames: function() {
             return this.currentAnimationDuration / this.numberOfFrames;
+        },
+        numberOfFrames: {
+            get() {
+                return this.$store.state.numberOfFrames;
+            },
+            set(value) {
+                this.$store.commit('setNumberOfFrames', value);
+            },
+        },
+        currentFrame: {
+            get() {
+                return this.$store.state.currentFrame;
+            },
+            set(value) {
+                this.$store.commit('setCurrentFrame', value);
+            },
+        },
+        captureWidth: {
+            get() {
+                return this.$store.state.captureWidth;
+            },
+            set(value) {
+                this.$store.commit('setCaptureWidth', value);
+            },
+        },
+        captureHeight: {
+            get() {
+                return this.$store.state.captureHeight;
+            },
+            set(value) {
+                this.$store.commit('setCaptureHeight', value);
+            },
+        },
+        isCaptureVisible: {
+            get() {
+                return this.$store.state.isCaptureVisible;
+            },
+            set(value) {
+                this.$store.commit('setIsCaptureVisible', value);
+            },
         },
     },
 
@@ -46,6 +82,8 @@ Vue.component('capture-menu', {
                     <v-slider class="pt-3 my-0" v-model.number:value="currentFrame" :min=1 :max="numberOfFrames" thumb-size=24 thumb-label="always"></v-slider>
                     <v-text-field min=1 label="Capture Width" type='number' v-model.number:value="captureWidth"></v-text-field>
                     <v-text-field min=1 label="Capture Height" type='number' v-model.number:value="captureHeight"></v-text-field>
+                    <v-switch label="Hide/Show Capture" v-model.number:value="isCaptureVisible"></v-switch>
+                    <v-btn color="primary">Capture Animation</v-btn>
                     </div>
                   </v-card-text>
                 </v-card>
