@@ -11,6 +11,7 @@ export default new Vuex.Store({
         captureWidth: 1024,
         captureHeight: 1024,
         isCaptureVisible: true,
+        postProcessingShaders: [],
     },
     mutations: {
         setCurrentModelPath(state, modelPath) {
@@ -36,6 +37,9 @@ export default new Vuex.Store({
         },
         setIsCaptureVisible(state, isCaptureVisible) {
             state.isCaptureVisible = isCaptureVisible;
+        },
+        addPostProcessingShader(state, newShader) {
+            state.postProcessingShaders.push(newShader);
         },
     },
 });

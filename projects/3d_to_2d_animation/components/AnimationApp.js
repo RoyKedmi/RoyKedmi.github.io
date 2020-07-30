@@ -41,8 +41,9 @@ export default Vue.component('animation-app', {
             this.renderPass = new RenderPass(this.scene, this.camera);
             this.effectComposer.addPass(this.renderPass);
 
-            this.pixelPass = new ShaderPass(PixelShader);
-            this.effectComposer.addPass(this.pixelPass);
+            this.currentPostProcessingShaders = [];
+            //this.pixelPass = new ShaderPass(PixelShader);
+            //this.effectComposer.addPass(this.pixelPass);
 
             this.highlightCapturePass = new ShaderPass(HighlightCaptureShader);
             this.effectComposer.addPass(this.highlightCapturePass);
@@ -121,6 +122,9 @@ export default Vue.component('animation-app', {
                         resolve( { environmentMap } );
                 }, undefined, reject);
             });
+        },
+
+        addPostProcessingShader() {
         },
 
         setCurrentModel(obj) {
@@ -213,20 +217,64 @@ export default Vue.component('animation-app', {
                 this.animationMixer.update(dt);
             }
 
-            this.updateShaders(time);
+            this.updateShadersUniforms(time);
             this.effectComposer.render();
             //this.renderer.render(this.scene, this.camera);
         },
 
-        updateShaders(time) {
+        updateShadersUniforms(time) {
             this.highlightCapturePass.uniforms['canvasSize'].value.x = this.renderer.domElement.width;
             this.highlightCapturePass.uniforms['canvasSize'].value.y = this.renderer.domElement.height;
             this.highlightCapturePass.uniforms['captureSize'].value.x = this.$store.state.captureWidth;
             this.highlightCapturePass.uniforms['captureSize'].value.y = this.$store.state.captureHeight;
             this.highlightCapturePass.uniforms['isCaptureVisible'].value = this.$store.state.isCaptureVisible;
 
-            this.pixelPass.uniforms['resolution'].value = new THREE.Vector2(this.renderer.domElement.width, this.renderer.domElement.height);
-            this.pixelPass.uniforms['pixelSize'].value = 5;
+            for (let i = 0; i < this.currentPostProcessingShaders.length; i++) {
+                if ('resolution' in this.currentPostProcessingShaders[i].uniforms) {
+                    if (!this.currentPostProcessingShaders[i].uniforms['resolution'].value) {
+                        this.currentPostProcessingShaders[i].uniforms['resolution'].value = new THREE.Vector2();
+                    }
+                    this.currentPostProcessingShaders[i].uniforms['resolution'].value.x = this.renderer.domElement.width;
+                    this.currentPostProcessingShaders[i].uniforms['resolution'].value.y = this.renderer.domElement.height;
+                }
+                if ('time' in this.currentPostProcessingShaders[i].uniforms) {
+                    this.currentPostProcessingShaders[i].uniforms['time'].value += time;
+                }
+
+                for (var uniform in this.postProcessingShaders[i].uniforms) {
+                    if (this.currentPostProcessingShaders[i].uniforms[uniform]) {
+                        this.currentPostProcessingShaders[i].uniforms[uniform].value = this.postProcessingShaders[i].uniforms[uniform].value;
+                    }
+                }
+            }
+            //this.pixelPass.uniforms['resolution'].value = new THREE.Vector2(this.renderer.domElement.width, this.renderer.domElement.height);
+            //this.pixelPass.uniforms['pixelSize'].value = 5;
+        },
+
+        updatePostProcessingShaders() {
+            this.effectComposer = new EffectComposer(this.renderer);
+            this.effectComposer.addPass(this.renderPass);
+
+            this.currentPostProcessingShaders = []
+
+            //this.renderPass = new RenderPass(this.scene, this.camera);
+
+            for (let i = 0; i < this.postProcessingShaders.length; i++) {
+                let newShader = new ShaderPass(this.postProcessingShaders[i].type);
+                //let newShader = new ShaderPass(PixelShader);
+
+                //newShader.uniforms['pixelSize'].value = 5;
+
+                this.currentPostProcessingShaders.push(newShader);
+                this.effectComposer.addPass(newShader);
+                console.log(newShader.uniforms);
+            }
+            //this.pixelPass = new ShaderPass(PixelShader);
+            //this.effectComposer.addPass(this.pixelPass);
+
+            //this.highlightCapturePass = new ShaderPass(HighlightCaptureShader);
+            this.effectComposer.addPass(this.highlightCapturePass);
+            console.log(this.effectComposer);
         },
     },
     
@@ -235,6 +283,7 @@ export default Vue.component('animation-app', {
             'currentModelPath',
             'currentAnimationName',
             'isAnimationPlaying',
+            'postProcessingShaders',
         ]),
     },
 
@@ -244,6 +293,9 @@ export default Vue.component('animation-app', {
         },
         currentAnimationName(newName) {
             this.changeAnimation();
+        },
+        postProcessingShaders(newShaders) {
+            this.updatePostProcessingShaders();
         },
     },
 
